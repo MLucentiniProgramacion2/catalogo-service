@@ -1,0 +1,31 @@
+# Infraestructura local del servicio de catálogo y sincronización.
+# Las credenciales se leen de .env (ver .env.example); nunca se escriben acá.
+# Redis y Kafka son los de la cátedra: no se levantan localmente.
+
+name: catalogo-service
+
+services:
+  catalogo-db:
+    image: postgres:18.1-alpine
+    container_name: catalogo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${CATALOGO_DB_NAME:?Falta CATALOGO_DB_NAME en .env}
+      POSTGRES_USER: ${CATALOGO_DB_USER:?Falta CATALOGO_DB_USER en .env}
+      POSTGRES_PASSWORD: ${CATALOGO_DB_PASSWORD:?Falta CATALOGO_DB_PASSWORD en .env}
+    ports:
+      # Solo localhost; el puerto del host es configurable para no chocar
+      # con la base del servicio de turnos.
+      - "127.0.0.1:${CATALOGO_DB_PORT:-5433}:5432"
+    volumes:
+      # Desde PostgreSQL 18 la imagen guarda los datos bajo /var/lib/postgresql.
+      - catalogo-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  catalogo-db-data:
