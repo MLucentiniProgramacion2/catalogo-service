@@ -101,7 +101,7 @@ flowchart LR
 
 | DP | Decisión | Casos |
 | --- | --- | --- |
-| DP-01 | "Disponibilidad" en la búsqueda significa que el profesional atiende en un día o franja según sus horarios semanales habilitados; no considera ocupaciones. | CU-05 |
+| DP-01 | "Disponibilidad" en la búsqueda significa que el profesional atiende en un día o franja según sus horarios semanales habilitados; no considera ocupaciones. Si no se indica el filtro "habilitado", se devuelven solo los habilitados; con `habilitado=false`, los deshabilitados. | CU-05 |
 | DP-02 | La app KMP consulta al catálogo directamente con el JWT de usuario emitido por turnos. | CU-05, CU-06, CU-09 |
 | DP-03 | Durante una reconstrucción se sirve la última copia confirmada y se informa la versión local; con la base vacía, `503`. | CU-01, CU-02, CU-05, CU-06, CU-07 |
 | DP-04 | Comprobación periódica de versión contra Redis cada N minutos (variable de entorno) como disparador adicional de CU-03, con la misma lógica e idempotencia. | CU-01, CU-03 |

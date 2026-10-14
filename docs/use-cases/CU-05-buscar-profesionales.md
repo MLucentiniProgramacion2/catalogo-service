@@ -23,12 +23,13 @@ El usuario ejecuta una búsqueda desde la app.
 1. La app envía la búsqueda con cualquier combinación de estos filtros opcionales:
    - **categoría:** ID de categoría;
    - **nombre:** texto parcial, sin distinguir mayúsculas ni minúsculas, sobre nombre y apellido;
-   - **habilitado:** `true` o `false`;
+   - **habilitado:** `true` o `false`; si se omite, se toma `true` (DP-01);
    - **disponibilidad:** día de la semana (`MONDAY` a `SUNDAY`) y, opcionalmente, una franja
      horaria desde/hasta.
 2. El catálogo valida el token y los parámetros.
 3. El catálogo consulta la base local aplicando los filtros indicados. Un filtro omitido no
-   restringe el resultado.
+   restringe el resultado, salvo "habilitado": si se omite, solo se devuelven los profesionales
+   habilitados; con `habilitado=false` se devuelven los deshabilitados (bajas lógicas).
 4. Para el filtro de disponibilidad, se incluyen los profesionales que tienen al menos un horario
    semanal **habilitado** de ese día cuya franja se superpone con la franja pedida (o cualquier
    horario habilitado de ese día, si no se indicó franja).
@@ -60,7 +61,9 @@ El usuario ejecuta una búsqueda desde la app.
   o franja según sus horarios semanales habilitados. **No** considera ocupaciones: los turnos
   libres reales los construye el servicio de turnos combinando horarios y ocupaciones (enunciado
   §7). Consultar ocupaciones en cada búsqueda obligaría a llamar a la cátedra por búsqueda, algo
-  que prohíbe el enunciado §6.2.
+  que prohíbe el enunciado §6.2. **Valor por defecto del filtro "habilitado":** si no se indica, se
+  devuelven solo los profesionales habilitados, que son los que el usuario puede reservar; con
+  `habilitado=false` se devuelven los deshabilitados.
 - **DP-02 (acceso desde KMP):** la app consulta al catálogo **directamente**, con el JWT de usuario
   emitido por turnos; turnos no hace de intermediario. Así la búsqueda sigue funcionando aunque
   turnos no esté disponible (enunciado §8). CORS no afecta a la app Android nativa (lo aplica solo
