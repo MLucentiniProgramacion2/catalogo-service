@@ -15,9 +15,11 @@ release.properties
 dependency-reduced-pom.xml
 buildNumber.properties
 .mvn/timing.properties
+/log/
 
 ### Logs ###
 *.log
+*.log*
 logs/
 
 ### IntelliJ IDEA ###
@@ -25,11 +27,15 @@ logs/
 *.iml
 *.ipr
 *.iws
+*.ids
+*.orig
+classes/
 out/
 
 ### VS Code ###
 .vscode/
 !.vscode/extensions.json
+*.code-workspace
 
 ### Eclipse / STS (soporte Java de VS Code) ###
 .classpath
@@ -37,13 +43,65 @@ out/
 .settings/
 .factorypath
 bin/
+*.pydevproject
+.metadata
+.loadpath
+local.properties
+.externalToolBuilders/**
+*.launch
+.cproject
+.buildpath
+/.sts4-cache/*
 
 ### Sistema operativo ###
 .DS_Store
 Thumbs.db
+Desktop.ini
+._*
+.Spotlight-V100
+.Trashes
 *~
 *.swp
 
 ### Instrucciones y configuración local de Claude Code ###
 CLAUDE.local.md
 .claude/settings.local.json
+
+### Generado por JHipster ###
+# Node (JHipster usa package.json solo para herramientas: prettier)
+/node/
+node_tmp/
+node_modules/
+npm-debug.log.*
+/.awcache/*
+/.cache-loader/*
+/dist/
+.eslintcache
+coverage/
+.nyc_output/
+
+# Gradle (no se usa, pero JHipster lo ignora por defecto)
+.gradle/
+/build/
+/buildSrc/.gradle/
+/buildSrc/build/
+
+# Archivos empaquetados y temporales
+*.jar
+*.war
+*.ear
+*.db
+*.class
+*.tmp
+*.bak
+*.*~
+*~.nib
+tmp/
+.sass-cache/
+.svn
+.merge_file*
+/deploy/
+
+# Excepciones: el wrapper de Maven sí se versiona (va después de *.jar)
+!.mvn/wrapper/maven-wrapper.jar
+!gradle/wrapper/gradle-wrapper.jar
