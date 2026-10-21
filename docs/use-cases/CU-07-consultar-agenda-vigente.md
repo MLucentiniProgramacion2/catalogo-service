@@ -17,16 +17,15 @@ la disponibilidad de una fecha o antes de pedir un hold.
 
 ## Precondiciones
 
-- Turnos envía un **JWT técnico de servicio** firmado con la clave compartida, con un claim que lo
-  distingue de los tokens de usuario (`aud=catalogo-service` o un `iss` propio) y el rol
-  `ROLE_SERVICE` (DP-06).
+- Turnos envía un **JWT técnico de servicio** firmado con la clave compartida, con
+  `aud=catalogo-service`, `iss=turnos-service` y el rol `ROLE_SERVICE` (DP-06).
 
 ## Flujo principal
 
 1. Turnos pide la agenda vigente de un profesional por su ID. Si la llamada nace de un pedido de
    usuario, envía además el login del usuario en el header `X-User-Login`.
-2. El catálogo valida firma, vigencia, el claim de servicio (`aud` o `iss`) y el rol
-   `ROLE_SERVICE`.
+2. El catálogo valida firma y vigencia del token y, como regla de autorización de este endpoint,
+   exige `aud=catalogo-service`, `iss=turnos-service` y el rol `ROLE_SERVICE` (DP-06).
 3. El catálogo registra en los logs el login recibido en `X-User-Login` (si vino) para
    trazabilidad. No lo usa para autorizar ni para filtrar datos.
 4. El catálogo lee de la base local el profesional, su categoría y sus horarios semanales
@@ -38,8 +37,9 @@ la disponibilidad de una fecha o antes de pedir un hold.
 ## Flujos alternativos
 
 - **2a. Sin token, token inválido o vencido:** `401`.
-- **2b. Token de usuario** (sin el claim de servicio o sin `ROLE_SERVICE`), aunque esté firmado con
-  la misma clave: `403`. Un token de usuario nunca sirve para este caso.
+- **2b. Token con firma válida sin `ROLE_SERVICE`, sin `aud=catalogo-service` o sin
+  `iss=turnos-service`:** `403`, sea un token de usuario o uno de servicio mal armado. Un token de
+  usuario nunca sirve para este caso.
 - **4a. El profesional no existe en la copia local:** respuesta de "no encontrado" en
   `problem+json`.
 - **4b. El profesional está deshabilitado** (baja lógica): se informa que no está habilitado, para
@@ -61,10 +61,13 @@ contrato con turnos, que todavía es una decisión pendiente.
 ## Decisiones del proyecto
 
 - **DP-06 (autenticación entre servicios):** turnos se autentica con un **JWT técnico de servicio**
-  propio, de vida corta, firmado con la clave compartida. El token lleva un claim que lo distingue
-  de los de usuario (`aud=catalogo-service` o un `iss` propio) y el rol `ROLE_SERVICE`; el catálogo
-  valida ambos además de firma y vigencia, así que un token de usuario nunca sirve para este caso
-  aunque comparta la clave de firma. A la inversa, los endpoints de usuario (CU-05, CU-06, CU-08,
+  propio, de vida corta, firmado con la clave compartida. El token lleva `aud=catalogo-service`,
+  `iss=turnos-service` y el rol `ROLE_SERVICE`, y el endpoint de agenda exige **los tres** además
+  de firma y vigencia: si falta cualquiera, responde `403`. Exigir los dos claims a la vez viene de
+  DPT-16 del servicio de turnos. Así un token de usuario nunca sirve para este caso aunque comparta
+  la clave de firma. La verificación de `aud`, `iss` y `ROLE_SERVICE` es una regla de
+  **autorización del endpoint de agenda**, no de la validación general del token: los endpoints de
+  usuario siguen aceptando tokens de usuario sin `aud`. A la inversa, los endpoints de usuario (CU-05, CU-06, CU-08,
   CU-09) rechazan el token técnico. Cuando la llamada nace de un pedido de usuario, turnos manda
   además el login en `X-User-Login`, **solo para logs y trazabilidad, no para autorizar**. La
   agenda no es un dato propio de ningún usuario, así que no se pierde autorización al no propagar
