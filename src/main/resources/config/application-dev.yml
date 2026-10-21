@@ -40,7 +40,10 @@ spring:
       indent-output: true
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://localhost:5432/catalogoService
+    # Base catalogo-db del docker-compose.yml de la raíz; los valores salen de .env.
+    url: jdbc:postgresql://${CATALOGO_DB_HOST:localhost}:${CATALOGO_DB_PORT}/${CATALOGO_DB_NAME}
+    username: ${CATALOGO_DB_USER}
+    password: ${CATALOGO_DB_PASSWORD}
     hikari:
       poolName: Hikari
       auto-commit: false
@@ -76,6 +79,9 @@ jhipster:
   security:
     authentication:
       jwt:
+        # Clave HS512 compartida con turnos-service (ADR 0003). Sin valor por
+        # defecto: si falta JWT_BASE64_SECRET, la aplicación no arranca.
+        base64-secret: ${JWT_BASE64_SECRET}
         # Token is valid 24 hours
         token-validity-in-seconds: 86400
         token-validity-in-seconds-for-remember-me: 2592000

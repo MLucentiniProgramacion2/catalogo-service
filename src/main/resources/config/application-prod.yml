@@ -89,6 +89,9 @@ jhipster:
   security:
     authentication:
       jwt:
+        # Clave HS512 compartida con turnos-service (ADR 0003). Sin valor por
+        # defecto: si falta JWT_BASE64_SECRET, la aplicación no arranca.
+        base64-secret: ${JWT_BASE64_SECRET}
         # Token is valid 24 hours
         token-validity-in-seconds: 86400
         token-validity-in-seconds-for-remember-me: 2592000

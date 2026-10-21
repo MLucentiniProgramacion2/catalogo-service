@@ -100,11 +100,15 @@ management:
 spring:
   application:
     name: catalogoService
+  config:
+    # Lee las variables de .env (ignorado por Git) desde el directorio de trabajo.
+    # Es opcional: en contenedores las variables llegan por el entorno.
+    import: optional:file:.env[.properties]
   docker:
     compose:
-      enabled: true
-      lifecycle-management: start-only
-      file: src/main/docker/postgresql.yml
+      # La única base es la del docker-compose.yml de la raíz (docker compose up -d).
+      # Se desactiva para que la app no levante otra con src/main/docker/postgresql.yml.
+      enabled: false
   profiles:
     # The commented value for `active` can be replaced with valid Spring profiles to load.
     # Otherwise, it will be filled in by maven when building the JAR file
@@ -112,7 +116,6 @@ spring:
     active: '@spring.profiles.active@'
     group:
       dev:
-        - secret-samples
         - api-docs
         # Uncomment to activate TLS for the dev profile
         #- tls
@@ -140,7 +143,8 @@ spring:
       hibernate.query.fail_on_pagination_over_collection_fetch: true
       hibernate.query.in_clause_parameter_padding: true
     hibernate:
-      ddl-auto: none
+      # El esquema lo administra Liquibase; Hibernate solo lo valida (ADR 0002).
+      ddl-auto: validate
       naming:
         physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
         implicit-strategy: org.springframework.boot.hibernate.SpringImplicitNamingStrategy
