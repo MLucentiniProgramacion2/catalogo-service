@@ -40,6 +40,10 @@ public class JwtAuthenticationTestUtils {
     }
 
     public static String createValidTokenForUser(String jwtKey, String user) {
+        return createValidTokenForUserWithAuthorities(jwtKey, user, List.of(ADMIN));
+    }
+
+    public static String createValidTokenForUserWithAuthorities(String jwtKey, String user, List<String> authorities) {
         JwtEncoder encoder = jwtEncoder(jwtKey);
 
         var now = Instant.now();
@@ -48,7 +52,7 @@ public class JwtAuthenticationTestUtils {
             .issuedAt(now)
             .expiresAt(now.plusSeconds(60))
             .subject(user)
-            .claims(customClaim -> customClaim.put(AUTHORITIES_CLAIM, List.of(ADMIN)))
+            .claims(customClaim -> customClaim.put(AUTHORITIES_CLAIM, authorities))
             .build();
 
         JwsHeader jwsHeader = JwsHeader.with(JWT_ALGORITHM).build();
