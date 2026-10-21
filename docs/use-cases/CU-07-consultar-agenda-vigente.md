@@ -36,7 +36,7 @@ la disponibilidad de una fecha o antes de pedir un hold.
 
 ## Flujos alternativos
 
-- **2a. Sin token, token inválido o vencido:** `401`.
+- **2a. Token ausente, firma inválida o vencido:** `401`.
 - **2b. Token con firma válida sin `ROLE_SERVICE`, sin `aud=catalogo-service` o sin
   `iss=turnos-service`:** `403`, sea un token de usuario o uno de servicio mal armado. Un token de
   usuario nunca sirve para este caso.
