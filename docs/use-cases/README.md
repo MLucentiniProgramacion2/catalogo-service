@@ -29,7 +29,8 @@ cátedra valida profesional, slot y ocupación, y responde `PROFESSIONAL_DISABLE
 
 Validar el JWT no es un caso de uso: es una precondición transversal de los casos expuestos por
 REST. Este servicio **no** registra ni autentica usuarios; eso vive en el servicio de turnos, que
-emite el JWT que el catálogo valida.
+emite el JWT que el catálogo valida. Cómo se valida y cómo se comparte la clave de firma con turnos
+está en el [ADR 0003](../adr/0003-validacion-jwt.md).
 
 ## Índice
 
@@ -120,4 +121,6 @@ flowchart LR
 
 - Contrato concreto con el servicio de turnos: rutas, DTOs y códigos de error de CU-07.
 - Formato de los changelogs de Liquibase (se decide con la primera migración).
-- Cómo se comparte la clave de firma del JWT con turnos.
+
+La clave de firma del JWT compartida con turnos ya no está pendiente: ver el
+[ADR 0003](../adr/0003-validacion-jwt.md).
