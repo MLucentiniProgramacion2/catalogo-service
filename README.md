@@ -1,3 +1,5 @@
+[![CI](https://github.com/MLucentiniProgramacion2/catalogo-service/actions/workflows/ci.yml/badge.svg)](https://github.com/MLucentiniProgramacion2/catalogo-service/actions/workflows/ci.yml)
+
 # catalogo-service
 
 Servicio de **catálogo y sincronización** del proyecto integrador 2026 (Programación II). Guarda
@@ -54,6 +56,8 @@ curl http://localhost:8081/management/health
 
 Los tests de integración levantan su propio PostgreSQL con Testcontainers, así que Docker tiene que
 estar corriendo. No usan el `.env`: el perfil de test tiene una clave JWT fija.
+
+GitHub Actions corre `./mvnw clean verify` con Java 25 en cada PR hacia `develop` y `main`.
 
 ## Notas
 
