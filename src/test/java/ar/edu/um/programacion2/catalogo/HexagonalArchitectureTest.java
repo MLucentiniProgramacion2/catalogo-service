@@ -15,7 +15,8 @@ import com.tngtech.archunit.lang.ArchRule;
  * {@code catalogo.catalog.domain.model}, pero no el {@code catalogo.domain} de JHipster.
  * <p>
  * Todas las reglas usan {@code allowEmptyShould(true)}: mientras no haya clases en las features, ArchUnit
- * fallaría por no encontrar nada que analizar.
+ * fallaría por no encontrar nada que analizar. Que los patrones estén bien escritos lo comprueba
+ * {@link ArquitecturaDetectaViolacionesTest} con la feature de ejemplo {@code archejemplo}.
  */
 @AnalyzeClasses(packagesOf = CatalogoServiceApp.class, importOptions = DoNotIncludeTests.class)
 class HexagonalArchitectureTest {
