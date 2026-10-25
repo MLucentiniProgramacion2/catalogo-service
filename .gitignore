@@ -30,7 +30,8 @@ logs/
 *.ids
 *.orig
 classes/
-out/
+# Anclado a la raíz: sin la barra inicial ignora cualquier carpeta "out", incluidos los puertos domain/ports/out
+/out/
 
 ### VS Code ###
 .vscode/
