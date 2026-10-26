@@ -52,6 +52,11 @@ La app o el administrador consultan el estado de sincronización.
   app puede mostrar, por ejemplo, "catálogo actualizado a la versión X" o un aviso de error). La
   respuesta nunca incluye hosts, credenciales, el JWT técnico ni stack traces.
 - **DP-02:** la app consulta este estado directamente al catálogo, con el JWT de usuario.
+- **Persistencia del estado (issue #13):** se guarda en una sola fila de `sync_status`, creada por
+  Liquibase y protegida con `CHECK (id = 1)`. Si hay una sincronización **en curso** no se persiste:
+  sale de la exclusión mutua en memoria (DP-09). Si se guardara y el servicio se cayera a mitad de un
+  snapshot, quedaría marcada "en curso" para siempre; además, escrita dentro de la transacción del
+  snapshot, nadie la vería hasta el commit. Supone una sola instancia del servicio.
 
 ## Respaldo en las consignas
 

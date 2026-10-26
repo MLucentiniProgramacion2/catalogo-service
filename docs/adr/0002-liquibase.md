@@ -37,8 +37,20 @@ La elección es válida **con o sin JHipster**:
 
 Así esta decisión no depende de la respuesta pendiente sobre JHipster.
 
-**Pendiente:** el formato de los *changelogs* (XML como JHipster, o YAML/SQL) se decide al
-escribir la primera migración.
+**Formato de los *changelogs* (decidido el 25/10, issue #13):** XML, igual que los que genera
+JHipster.
+
+- **Uno por tabla**, en carpetas por feature (`changelog/catalog/`, `changelog/sync/`), separados
+  de los de JHipster, que quedan en `changelog/` sin tocar.
+- Se incluyen **uno por uno** en `master.xml`, no con `includeAll`, porque el orden importa: las
+  claves foráneas exigen crear categorías, profesionales y horarios en ese orden.
+- Identificador del *changeset*: `<feature>-<número>-<tabla>` (por ejemplo,
+  `catalog-002-professional`), con autor `maximoLucentini`.
+- Lo que el XML de la edición gratuita no cubre (los `CHECK`: `addCheckConstraint` es de
+  Liquibase Pro) va con `<sql>` y con su `<rollback>` explícito.
+
+Se descartaron YAML, porque mezclaría dos formatos en el mismo `master.xml`, y SQL plano, porque
+pierde el *rollback* automático y la independencia del motor que da el XML.
 
 ## Alternativas consideradas
 
