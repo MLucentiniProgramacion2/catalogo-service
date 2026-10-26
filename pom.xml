@@ -45,6 +45,7 @@
         <liquibase-plugin.password/>
         <liquibase-plugin.url/>
         <liquibase-plugin.username/>
+        <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
         <mapstruct.version>1.6.3</mapstruct.version>
         <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
         <modernizer-maven-plugin.version>3.5.0</modernizer-maven-plugin.version>
@@ -251,6 +252,12 @@
             <version>${mapstruct.version}</version>
         </dependency>
         <dependency>
+            <!-- Solo en compilación: genera getters, setters y constructores; no viaja en el jar. -->
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
         </dependency>
@@ -414,6 +421,19 @@
                             <path>
                                 <groupId>org.springframework.boot</groupId>
                                 <artifactId>spring-boot-configuration-processor</artifactId>
+                            </path>
+                            <!--
+                                Lombok antes que MapStruct: MapStruct tiene que ver los getters y setters que
+                                genera Lombok. lombok-mapstruct-binding coordina los dos procesadores.
+                            -->
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                            </path>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok-mapstruct-binding</artifactId>
+                                <version>${lombok-mapstruct-binding.version}</version>
                             </path>
                             <path>
                                 <groupId>org.mapstruct</groupId>
