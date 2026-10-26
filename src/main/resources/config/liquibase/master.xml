@@ -12,6 +12,14 @@
     <property name="timeType" value="time(6)" dbms="postgresql"/>
 
     <include file="config/liquibase/changelog/00000000000000_initial_schema.xml" relativeToChangelogFile="false"/>
+    <!--
+        Tablas de negocio: changelogs propios, separados de los de JHipster, uno por tabla y en carpetas por feature.
+        Se incluyen uno por uno (no con includeAll) porque el orden importa: las claves foráneas exigen
+        categorías, profesionales y horarios, en ese orden.
+    -->
+    <include file="config/liquibase/changelog/catalog/001-professional-category.xml" relativeToChangelogFile="false"/>
+    <include file="config/liquibase/changelog/catalog/002-professional.xml" relativeToChangelogFile="false"/>
+    <include file="config/liquibase/changelog/catalog/003-weekly-schedule.xml" relativeToChangelogFile="false"/>
     <!-- jhipster-needle-liquibase-add-changelog - JHipster will add liquibase changelogs here -->
     <!-- jhipster-needle-liquibase-add-constraints-changelog - JHipster will add liquibase constraints changelogs here -->
     <!-- jhipster-needle-liquibase-add-incremental-changelog - JHipster will add incremental liquibase changelogs here -->

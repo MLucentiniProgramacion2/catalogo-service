@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+        Copia local de los profesionales de la cátedra (contrato §7 y §14.4).
+        PostgreSQL no indexa solo las claves foráneas: el índice sobre category_id sirve para el filtro por categoría
+        de la búsqueda (CU-05) y para que la base verifique la clave foránea al borrar o cambiar una categoría.
+    -->
+    <changeSet id="catalog-002-professional" author="maximoLucentini">
+        <createTable tableName="professional" remarks="Copia local de los profesionales de la cátedra">
+            <column name="id" type="bigint" remarks="ID de la cátedra">
+                <constraints primaryKey="true" primaryKeyName="pk_professional" nullable="false"/>
+            </column>
+            <column name="category_id" type="bigint">
+                <constraints
+                    nullable="false"
+                    foreignKeyName="fk_professional_category"
+                    referencedTableName="professional_category"
+                    referencedColumnNames="id"/>
+            </column>
+            <column name="first_name" type="text">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_name" type="text">
+                <constraints nullable="false"/>
+            </column>
+            <column name="enabled" type="boolean" remarks="false = baja lógica">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp" remarks="Instante UTC informado por la cátedra">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp" remarks="Instante UTC informado por la cátedra">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="professional" indexName="idx_professional_category_id">
+            <column name="category_id"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>
