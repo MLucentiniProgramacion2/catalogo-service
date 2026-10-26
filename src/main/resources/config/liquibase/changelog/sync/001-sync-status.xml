@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+        Estado de sincronización (CU-09): una sola fila.
+        - CHECK (id = 1): la base rechaza una segunda fila.
+        - La fila se crea acá, con todo en NULL ("sin datos"): el código solo la actualiza, nunca decide si crearla, y
+          la sincronización incremental puede bloquearla (SELECT ... FOR UPDATE) para verificar la versión local (CU-04).
+        - Sin contexto: corre en todos los perfiles.
+        Los tipos de camino, disparador y error van como texto sin CHECK: los valores son nuestros y agregar uno no debe
+        requerir una migración. Si hay una sincronización en curso no se guarda: es un dato del proceso vivo.
+        Todo en un changeset para que la tabla nunca exista sin su fila; el rollback explícito es por el sql y el insert.
+    -->
+    <changeSet id="sync-001-sync-status" author="maximoLucentini">
+        <createTable tableName="sync_status" remarks="Estado de sincronización de la copia local (una sola fila)">
+            <column name="id" type="smallint" remarks="Siempre 1">
+                <constraints primaryKey="true" primaryKeyName="pk_sync_status" nullable="false"/>
+            </column>
+            <column name="local_version" type="bigint" remarks="Versión aplicada; NULL = sin datos"/>
+            <column name="last_success_at" type="timestamp"/>
+            <column name="last_success_path" type="varchar(20)" remarks="SNAPSHOT o INCREMENTAL"/>
+            <column name="last_success_trigger" type="varchar(20)" remarks="KAFKA, STARTUP, PERIODIC o MANUAL"/>
+            <column name="remote_version" type="bigint" remarks="Última currentVersion leída de la metadata de Redis"/>
+            <column name="remote_version_checked_at" type="timestamp"/>
+            <column name="last_error_at" type="timestamp"/>
+            <column name="last_error_type" type="varchar(40)"/>
+            <column name="last_error_description" type="text" remarks="Sin datos sensibles: se informa a los usuarios"/>
+        </createTable>
+        <sql>
+            ALTER TABLE sync_status ADD CONSTRAINT ck_sync_status_single_row CHECK (id = 1)
+        </sql>
+        <insert tableName="sync_status">
+            <column name="id" valueNumeric="1"/>
+        </insert>
+        <rollback>
+            <dropTable tableName="sync_status"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

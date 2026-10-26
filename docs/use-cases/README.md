@@ -108,7 +108,7 @@ flowchart LR
 | DP-04 | Comprobación periódica de versión contra Redis cada N minutos (variable de entorno) como disparador adicional de CU-03, con la misma lógica e idempotencia. | CU-01, CU-03 |
 | DP-05 | Estado de sincronización: cualquier usuario autenticado. Sincronización manual: solo `ROLE_ADMIN`. | CU-08, CU-09 |
 | DP-06 | Turnos usa un JWT técnico de servicio con `aud=catalogo-service`, `iss=turnos-service` y `ROLE_SERVICE` (DPT-16 de turnos); el endpoint de agenda exige los tres como regla de autorización, no de la validación general del token, y si falta uno responde `403`; `X-User-Login` solo para trazabilidad; los endpoints de usuario rechazan el token técnico. | CU-05 a CU-09 |
-| DP-07 | `eventId` procesados en una tabla de PostgreSQL, en la misma transacción que los cambios; la comparación de versiones es una segunda barrera. | CU-03, CU-04 |
+| DP-07 | `eventId` procesados en una tabla de PostgreSQL (`processed_event`: `eventId`, `newVersion` del evento y fecha de procesamiento), en la misma transacción que los cambios; la comparación de versiones es una segunda barrera. | CU-03, CU-04 |
 | DP-08 | Timeouts configurables, hasta 3 reintentos con backoff de 1 s, 2 s y 4 s; si se agotan, rollback de la versión en curso, se conservan las versiones completas, el `eventId` no se registra, se registra el error y se commitea el offset. | CU-02, CU-03, CU-04 |
 | DP-09 | Una sola incorporación de cambios a la vez; los demás disparadores esperan hasta un máximo configurable y, si se supera, terminan sin cambios y lo registran. | CU-01, CU-03, CU-04, CU-08 |
 | DP-10 | La sincronización manual corre la lógica de CU-03 por defecto y puede forzar un snapshot con un parámetro explícito. | CU-08 |
@@ -120,7 +120,9 @@ flowchart LR
 ## Decisiones todavía pendientes que afectan a estos casos
 
 - Contrato concreto con el servicio de turnos: rutas, DTOs y códigos de error de CU-07.
-- Formato de los changelogs de Liquibase (se decide con la primera migración).
 
-La clave de firma del JWT compartida con turnos ya no está pendiente: ver el
-[ADR 0003](../adr/0003-validacion-jwt.md).
+Ya no están pendientes:
+
+- La clave de firma del JWT compartida con turnos: ver el [ADR 0003](../adr/0003-validacion-jwt.md).
+- El formato de los changelogs de Liquibase: XML, uno por tabla, en carpetas por feature (ver el
+  [ADR 0002](../adr/0002-liquibase.md)).

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+        Copia local de los horarios semanales de la cátedra (contrato §7 y §14.4).
+        Las horas son locales de atención: "time" sin zona.
+        El índice (professional_id, day_of_week) cubre la clave foránea y el filtro de disponibilidad de la búsqueda
+        (CU-05: horarios de un profesional en un día).
+        El CHECK de day_of_week es el único: sus valores los fija el contrato y no van a cambiar. No se exige
+        start_time < end_time ni slot_duration_minutes > 0 porque el contrato no lo garantiza.
+        addCheckConstraint es de Liquibase Pro; por eso va con sql y con su rollback explícito.
+    -->
+    <changeSet id="catalog-003-weekly-schedule" author="maximoLucentini">
+        <createTable tableName="weekly_schedule" remarks="Copia local de los horarios semanales de la cátedra">
+            <column name="id" type="bigint" remarks="ID de la cátedra">
+                <constraints primaryKey="true" primaryKeyName="pk_weekly_schedule" nullable="false"/>
+            </column>
+            <column name="professional_id" type="bigint">
+                <constraints
+                    nullable="false"
+                    foreignKeyName="fk_weekly_schedule_professional"
+                    referencedTableName="professional"
+                    referencedColumnNames="id"/>
+            </column>
+            <column name="day_of_week" type="varchar(9)" remarks="MONDAY a SUNDAY">
+                <constraints nullable="false"/>
+            </column>
+            <column name="start_time" type="time" remarks="Hora local de atención">
+                <constraints nullable="false"/>
+            </column>
+            <column name="end_time" type="time" remarks="Hora local de atención">
+                <constraints nullable="false"/>
+            </column>
+            <column name="slot_duration_minutes" type="integer">
+                <constraints nullable="false"/>
+            </column>
+            <column name="enabled" type="boolean" remarks="false = baja lógica">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp" remarks="Instante UTC informado por la cátedra">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp" remarks="Instante UTC informado por la cátedra">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="weekly_schedule" indexName="idx_weekly_schedule_professional_day">
+            <column name="professional_id"/>
+            <column name="day_of_week"/>
+        </createIndex>
+        <sql>
+            ALTER TABLE weekly_schedule ADD CONSTRAINT ck_weekly_schedule_day_of_week
+                CHECK (day_of_week IN ('MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'))
+        </sql>
+        <rollback>
+            <dropTable tableName="weekly_schedule"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
