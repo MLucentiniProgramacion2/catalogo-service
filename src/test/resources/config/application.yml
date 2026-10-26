@@ -89,7 +89,11 @@ jhipster:
 # https://www.jhipster.tech/common-application-properties/
 # ===================================================================
 
-# application:
+application:
+  liquibase:
+    # Igual que en el application.yml principal, que este archivo tapa en los tests: Liquibase
+    # termina antes de que Hibernate valide el esquema, sin depender del nombre del perfil.
+    async-start: false
 management:
   health:
     mail:
