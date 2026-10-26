@@ -63,3 +63,35 @@ escribir la primera migración.
     aprenderlo.
   - Un *changeset* ya aplicado no se edita: cualquier corrección va en uno nuevo (Liquibase
     valida *checksums* y falla si cambia uno ya aplicado).
+
+## Nota (25/10)
+
+Revisando la decisión "Hibernate solo valida" (issue #15) aparecieron dos huecos que dejaba la
+configuración generada por JHipster:
+
+1. **Los tests no validaban el esquema.** `application-testdev.yml` y `application-testprod.yml`
+   tenían `ddl-auto: none` y `hibernate.hbm2ddl.auto: none` (con un TODO de JHipster). El
+   `validate` del `application.yml` principal no llega a los tests, porque el
+   `src/test/resources/config/application.yml` lo tapa en el classpath. Un test podía pasar con una
+   entidad que no coincidía con su tabla.
+2. **En el perfil `dev`, Liquibase corría en paralelo con el arranque.** Con
+   `application.liquibase.async-start: true` (valor por defecto de JHipster), `AsyncSpringLiquibase`
+   ejecuta la migración en otro hilo si está activo `dev`. El `EntityManagerFactory` depende del bean
+   de Liquibase, pero solo espera a que se inicialice, y en modo asincrónico eso vuelve enseguida.
+   Con una migración lenta, Hibernate validó antes de que existiera la tabla y el arranque falló
+   (`Schema validation: missing table`). En `prod` y en los tests ya era sincrónico.
+
+**Se decidió:**
+
+- `ddl-auto: validate` también en los perfiles de test, y se borra `hibernate.hbm2ddl.auto`, que en
+  Spring Boot tiene prioridad sobre `ddl-auto`.
+- `application.liquibase.async-start: false` en el `application.yml` principal y en el de test:
+  Liquibase termina antes de que Hibernate valide, en todos los perfiles.
+
+**Por qué:** la validación solo sirve si corre en todos lados y después de las migraciones. Si no,
+una diferencia entre entidad y tabla aparece recién en ejecución. El costo es que el perfil `dev`
+arranca un poco más lento, porque espera a Liquibase.
+
+**Comprobación:** con una columna inexistente agregada a una entidad de test, los tests de
+integración fallan por la validación. El perfil `dev` arranca contra una base vacía, incluso con un
+*changeset* artificialmente lento que antes hacía fallar el arranque.

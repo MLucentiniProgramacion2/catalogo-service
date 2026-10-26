@@ -224,4 +224,10 @@ jhipster:
 # https://www.jhipster.tech/common-application-properties/
 # ===================================================================
 
-# application:
+application:
+  liquibase:
+    # Liquibase tiene que terminar antes de que Hibernate valide el esquema (ddl-auto: validate).
+    # Con true (valor por defecto de JHipster), en el perfil dev Liquibase corre en otro hilo y
+    # Hibernate puede validar antes de que existan las tablas: el arranque falla según cuánto
+    # tarde la migración. Con false corre sincrónico en todos los perfiles (issue #15, ADR 0002).
+    async-start: false
