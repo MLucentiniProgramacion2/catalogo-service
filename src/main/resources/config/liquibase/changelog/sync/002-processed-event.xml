@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+        Eventos CatalogUpdated ya procesados (contrato §15.3, DP-07): primera barrera de idempotencia.
+        La clave primaria es el eventId, que es texto; el contrato no fija su largo.
+        new_version es la versión que anunciaba el evento; la aplicada queda en sync_status.
+    -->
+    <changeSet id="sync-002-processed-event" author="maximoLucentini">
+        <createTable tableName="processed_event" remarks="Eventos CatalogUpdated ya procesados">
+            <column name="event_id" type="text">
+                <constraints primaryKey="true" primaryKeyName="pk_processed_event" nullable="false"/>
+            </column>
+            <column name="new_version" type="bigint" remarks="newVersion del evento">
+                <constraints nullable="false"/>
+            </column>
+            <column name="processed_at" type="timestamp">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>
