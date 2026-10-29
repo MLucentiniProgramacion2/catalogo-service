@@ -33,6 +33,14 @@ Completar el `.env` (ignorado por Git):
 - `JWT_BASE64_SECRET`: clave de firma del JWT. Se genera con
   `openssl rand -base64 64 | tr -d '\n'` y tiene que ser **exactamente la misma** que en
   turnos-service. Si falta o está vacía, la aplicación no arranca.
+- `CATEDRA_API_URL` y `CATEDRA_JWT`: URL base de la API de la cátedra y JWT técnico de la cuenta
+  del proyecto (ver [ADR 0004](docs/adr/0004-cliente-http-catedra.md)). Si falta alguno o está
+  vacío, la aplicación no arranca. El JWT nunca va en logs, issues ni PRs.
+- `CATEDRA_CONNECT_TIMEOUT` y `CATEDRA_READ_TIMEOUT` (opcionales, `5s` y `30s` por defecto): tiempo
+  para conectar y para recibir la respuesta completa.
+
+La cátedra solo es accesible por ZeroTier: si falla la conexión, verificar primero
+`sudo zerotier-cli listnetworks`.
 
 ## Uso
 
@@ -55,9 +63,22 @@ curl http://localhost:8081/management/health
 ```
 
 Los tests de integración levantan su propio PostgreSQL con Testcontainers, así que Docker tiene que
-estar corriendo. No usan el `.env`: el perfil de test tiene una clave JWT fija.
+estar corriendo. No usan el `.env`: el perfil de test tiene una clave JWT fija y valores falsos
+para la cátedra, que se simula con un servidor HTTP local.
 
 GitHub Actions corre `./mvnw clean verify` con Java 25 en cada PR hacia `develop` y `main`.
+
+### Comprobación manual contra la cátedra real
+
+No corre en el CI ni con `./mvnw verify`. Con ZeroTier conectado y `CATEDRA_API_URL` y
+`CATEDRA_JWT` en el `.env`:
+
+```bash
+./mvnw test -Dtest=CatedraSnapshotManualCheck -Dcatedra.manual=true
+```
+
+Imprime solo `snapshotVersion` y la cantidad de categorías, profesionales y horarios. Si falla,
+imprime una línea con el tipo de error y el status/code, sin el token.
 
 ## Notas
 

@@ -89,6 +89,13 @@ jhipster:
 # https://www.jhipster.tech/common-application-properties/
 # ===================================================================
 
+catedra:
+  api:
+    # Solo para tests: valores falsos. Nadie escucha en el puerto 1, así que ningún test de
+    # contexto llega a la cátedra real; los tests del cliente usan un servidor simulado.
+    url: http://localhost:1
+    token: token-falso-solo-para-tests
+
 application:
   liquibase:
     # Igual que en el application.yml principal, que este archivo tapa en los tests: Liquibase

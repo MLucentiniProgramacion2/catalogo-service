@@ -213,6 +213,21 @@ jhipster:
     license-url:
 
 
+# ===================================================================
+# API REST de la cátedra (contrato §3 y §7, ADR 0004). Ver CatedraApiProperties.
+# ===================================================================
+
+catedra:
+  api:
+    # Sin valor real por defecto: si la variable falta o está vacía, la aplicación no arranca.
+    # El ":" vacío es a propósito: sin él, un placeholder sin resolver queda como el texto
+    # literal "${CATEDRA_JWT}", que no está vacío y pasaría la validación.
+    url: ${CATEDRA_API_URL:}
+    token: ${CATEDRA_JWT:}
+    connect-timeout: ${CATEDRA_CONNECT_TIMEOUT:5s}
+    # Plazo total para recibir la respuesta completa (cuerpo incluido), no de inactividad.
+    read-timeout: ${CATEDRA_READ_TIMEOUT:30s}
+
 # jhipster-needle-add-application-yaml-document
 ---
 # ===================================================================
