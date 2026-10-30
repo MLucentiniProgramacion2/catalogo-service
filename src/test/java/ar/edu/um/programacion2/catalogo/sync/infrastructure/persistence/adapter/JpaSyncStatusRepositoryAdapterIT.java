@@ -12,6 +12,7 @@ import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SyncStatusReposito
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.InvalidDataAccessApiUsageException;
@@ -23,7 +24,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>
  * La clase no es {@code @Transactional}: el adaptador exige que quien llama abra la transacción, y hay que probar
  * también qué pasa sin ella. Cada test abre las suyas con {@link TransactionTemplate} y lee en una transacción aparte,
- * para leer lo que quedó en la base. Como se commitea de verdad, al final se vuelve la fila al estado inicial.
+ * para leer lo que quedó en la base. Como se commitea de verdad, antes y después de cada test la fila vuelve al estado
+ * inicial con SQL, no con el adaptador: la limpieza no puede depender del código que se prueba.
  */
 @IntegrationTest
 class JpaSyncStatusRepositoryAdapterIT {
@@ -41,9 +43,22 @@ class JpaSyncStatusRepositoryAdapterIT {
     @Autowired
     private EntityManager em;
 
+    @BeforeEach
     @AfterEach
     void volverAlEstadoInicial() {
-        transactionTemplate.executeWithoutResult(tx -> syncStatusRepository.save(SyncStatus.initial()));
+        transactionTemplate.executeWithoutResult(tx ->
+            em
+                .createNativeQuery(
+                    """
+                    update sync_status set
+                        local_version = null, last_success_at = null, last_success_path = null, last_success_trigger = null,
+                        remote_version = null, remote_version_checked_at = null,
+                        last_error_at = null, last_error_type = null, last_error_description = null
+                    where id = 1
+                    """
+                )
+                .executeUpdate()
+        );
     }
 
     @Test

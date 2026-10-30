@@ -54,7 +54,16 @@ class SnapshotPersistenceTransactionIT {
             em.createNativeQuery("delete from weekly_schedule").executeUpdate();
             em.createNativeQuery("delete from professional").executeUpdate();
             em.createNativeQuery("delete from professional_category").executeUpdate();
-            syncStatusRepository.save(SyncStatus.initial());
+            // Con SQL y no con el adaptador: la limpieza no puede depender del código que se prueba.
+            em.createNativeQuery(
+                """
+                update sync_status set
+                    local_version = null, last_success_at = null, last_success_path = null, last_success_trigger = null,
+                    remote_version = null, remote_version_checked_at = null,
+                    last_error_at = null, last_error_type = null, last_error_description = null
+                where id = 1
+                """
+            ).executeUpdate();
         });
     }
 

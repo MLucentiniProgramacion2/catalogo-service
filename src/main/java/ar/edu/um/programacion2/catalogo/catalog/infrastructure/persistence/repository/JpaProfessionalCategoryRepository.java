@@ -9,7 +9,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface JpaProfessionalCategoryRepository extends JpaRepository<ProfessionalCategoryEntity, Long> {
     /**
-     * Borra todos los categorías con un solo {@code DELETE}, sin cargarlos.
+     * Borra todas las categorías con un solo {@code DELETE}, sin cargarlas.
      * <p>
      * El {@code DELETE} va directo a la base y el contexto de persistencia no se entera: {@code flushAutomatically}
      * manda antes lo pendiente (de cualquier tabla) y {@code clearAutomatically} vacía el contexto después, para que no
