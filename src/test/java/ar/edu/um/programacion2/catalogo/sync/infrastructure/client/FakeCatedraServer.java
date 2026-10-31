@@ -19,11 +19,13 @@ import java.util.concurrent.TimeUnit;
  * Cátedra simulada con el servidor HTTP del JDK ({@code com.sun.net.httpserver}): abre un socket real en
  * {@code 127.0.0.1} y un puerto libre, así se pueden probar timeouts y el servidor apagado, que un mock sin red no
  * cubre. Registra cada pedido recibido y responde lo que se le configure.
+ * <p>
+ * Es pública para que la usen los tests de integración de CU-01 y CU-02, que están en otros paquetes.
  */
-final class FakeCatedraServer implements AutoCloseable {
+public final class FakeCatedraServer implements AutoCloseable {
 
     /** Pedido tal como llegó al servidor. */
-    record ReceivedRequest(String method, String path, String authorization) {}
+    public record ReceivedRequest(String method, String path, String authorization) {}
 
     private interface Behavior {
         void handle(HttpExchange exchange) throws IOException, InterruptedException;
@@ -45,23 +47,23 @@ final class FakeCatedraServer implements AutoCloseable {
         server.start();
     }
 
-    static FakeCatedraServer start() throws IOException {
+    public static FakeCatedraServer start() throws IOException {
         return new FakeCatedraServer();
     }
 
-    URI baseUrl() {
+    public URI baseUrl() {
         return URI.create("http://127.0.0.1:" + server.getAddress().getPort());
     }
 
-    List<ReceivedRequest> requests() {
+    public List<ReceivedRequest> requests() {
         return List.copyOf(requests);
     }
 
-    void respondJson(int status, String body) {
+    public void respondJson(int status, String body) {
         behavior = exchange -> send(exchange, status, "application/json", body);
     }
 
-    void respondProblem(int status, String code) {
+    public void respondProblem(int status, String code) {
         String body = "{\"title\":\"Error\",\"status\":" + status + ",\"detail\":\"detalle libre\",\"code\":\"" + code + "\"}";
         behavior = exchange -> send(exchange, status, "application/problem+json", body);
     }

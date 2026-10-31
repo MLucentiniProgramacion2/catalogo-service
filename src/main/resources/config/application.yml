@@ -228,6 +228,15 @@ catedra:
     # Plazo total para recibir la respuesta completa (cuerpo incluido), no de inactividad.
     read-timeout: ${CATEDRA_READ_TIMEOUT:30s}
 
+sync:
+  startup:
+    # CU-01: al arrancar, si la base no tiene versión local, sincroniza con un snapshot.
+    enabled: ${SYNC_STARTUP_ENABLED:true}
+  retry:
+    # DP-08: esperas antes de cada reintento de una sincronización. La cantidad de reintentos es la
+    # cantidad de esperas: con 1s,2s,4s se intenta hasta 4 veces.
+    delays: ${SYNC_RETRY_DELAYS:1s,2s,4s}
+
 # jhipster-needle-add-application-yaml-document
 ---
 # ===================================================================
