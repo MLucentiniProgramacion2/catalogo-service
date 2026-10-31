@@ -97,6 +97,10 @@ catedra:
     token: token-falso-solo-para-tests
 
 sync:
+  startup:
+    # Apagado en los tests: cada contexto llamaría a la cátedra falsa al levantar, esperaría los
+    # reintentos y escribiría sync_status. Solo lo prenden los tests de CU-01.
+    enabled: false
   retry:
     # Esperas cortas para que ningún test de integración duerma 7 s. Las de verdad (1 s, 2 s y 4 s)
     # las verifican los unitarios del caso de uso, sin dormir.

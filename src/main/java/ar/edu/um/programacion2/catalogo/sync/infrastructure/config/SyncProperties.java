@@ -24,7 +24,19 @@ public class SyncProperties {
 
     @Valid
     @NotNull
+    private Startup startup = new Startup();
+
+    @Valid
+    @NotNull
     private Retry retry = new Retry();
+
+    @Getter
+    @Setter
+    public static class Startup {
+
+        /** CU-01: al arrancar, si no hay versión local, sincroniza con un snapshot. */
+        private boolean enabled = true;
+    }
 
     @Getter
     @Setter

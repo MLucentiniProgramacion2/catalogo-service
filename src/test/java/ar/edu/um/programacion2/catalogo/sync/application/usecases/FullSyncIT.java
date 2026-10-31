@@ -22,6 +22,7 @@ import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncStatus;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncTrigger;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SyncStatusRepository;
 import ar.edu.um.programacion2.catalogo.sync.infrastructure.client.FakeCatedraServer;
+import ar.edu.um.programacion2.catalogo.sync.infrastructure.startup.EmptyDatabaseBeforeStartup;
 import jakarta.persistence.EntityManager;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -37,6 +38,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
@@ -60,6 +62,9 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 class FullSyncIT {
 
     private static final FakeCatedraServer CATEDRA = startCatedra();
+
+    @Autowired
+    private ApplicationContext context;
 
     @Autowired
     private SyncService syncService;
@@ -183,6 +188,13 @@ class FullSyncIT {
         assertThat(estado.getLastErrorDescription()).startsWith(
             "La base de datos local no respondió al aplicar el snapshot después de 4 intentos: "
         );
+    }
+
+    @Test
+    void laLimpiezaDeArranqueDeLosTestsDeCU01NoEstaEnUnContextoQueNoLaImporta() {
+        // EmptyDatabaseBeforeStartup vacía la base al arrancar el contexto. Si el escaneo de componentes la encontrara,
+        // estaría en todos los contextos de test; este no la importa, así que no tiene que estar.
+        assertThat(context.getBeanNamesForType(EmptyDatabaseBeforeStartup.class)).isEmpty();
     }
 
     @Test
