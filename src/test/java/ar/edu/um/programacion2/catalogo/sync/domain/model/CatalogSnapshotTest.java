@@ -115,4 +115,73 @@ class CatalogSnapshotTest {
             new CatalogSnapshot(7, GENERADO, List.of(), Arrays.asList(PROFESIONAL, null), List.of())
         );
     }
+
+    @Test
+    void unSnapshotCoherenteNoTieneReferenciasRotas() {
+        CatalogSnapshot snapshot = new CatalogSnapshot(7, GENERADO, List.of(CATEGORIA), List.of(PROFESIONAL), List.of(HORARIO));
+
+        assertThat(snapshot.brokenReferences()).isEmpty();
+    }
+
+    @Test
+    void unSnapshotVacioNoTieneReferenciasRotas() {
+        assertThat(new CatalogSnapshot(7, GENERADO, List.of(), List.of(), List.of()).brokenReferences()).isEmpty();
+    }
+
+    @Test
+    void informaUnProfesionalCuyaCategoriaNoEstaEnElSnapshot() {
+        Professional huerfano = new Professional(16, 999, "Luis", "Perez", true, CREADO, ACTUALIZADO);
+        CatalogSnapshot snapshot = new CatalogSnapshot(7, GENERADO, List.of(CATEGORIA), List.of(PROFESIONAL, huerfano), List.of());
+
+        assertThat(snapshot.brokenReferences()).containsExactly(
+            "el profesional 16 apunta a la categoría 999, que no está en el snapshot"
+        );
+    }
+
+    @Test
+    void informaUnHorarioCuyoProfesionalNoEstaEnElSnapshot() {
+        WeeklySchedule huerfano = horarioDe(22, 99);
+        CatalogSnapshot snapshot = new CatalogSnapshot(7, GENERADO, List.of(CATEGORIA), List.of(PROFESIONAL), List.of(HORARIO, huerfano));
+
+        assertThat(snapshot.brokenReferences()).containsExactly("el horario 22 apunta al profesional 99, que no está en el snapshot");
+    }
+
+    @Test
+    void informaTodasLasReferenciasRotasPrimeroLasDeProfesionales() {
+        Professional huerfano = new Professional(16, 999, "Luis", "Perez", true, CREADO, ACTUALIZADO);
+        WeeklySchedule horarioHuerfano = horarioDe(22, 99);
+        CatalogSnapshot snapshot = new CatalogSnapshot(
+            7,
+            GENERADO,
+            List.of(),
+            List.of(PROFESIONAL, huerfano),
+            List.of(horarioHuerfano, HORARIO)
+        );
+
+        assertThat(snapshot.brokenReferences()).containsExactly(
+            "el profesional 15 apunta a la categoría 1, que no está en el snapshot",
+            "el profesional 16 apunta a la categoría 999, que no está en el snapshot",
+            "el horario 22 apunta al profesional 99, que no está en el snapshot"
+        );
+    }
+
+    @Test
+    void lasEntidadesDeshabilitadasCuentanComoPresentes() {
+        ProfessionalCategory deshabilitada = new ProfessionalCategory(1, "Clinica medica", null, false, CREADO, ACTUALIZADO);
+        Professional profesionalDeshabilitado = new Professional(15, 1, "Ana", "Gomez", false, CREADO, ACTUALIZADO);
+        CatalogSnapshot snapshot = new CatalogSnapshot(
+            7,
+            GENERADO,
+            List.of(deshabilitada),
+            List.of(profesionalDeshabilitado),
+            List.of(HORARIO)
+        );
+
+        assertThat(snapshot.brokenReferences()).isEmpty();
+    }
+
+    private static WeeklySchedule horarioDe(long id, long professionalId) {
+        LocalTime nueve = LocalTime.of(9, 0);
+        return new WeeklySchedule(id, professionalId, DayOfWeek.TUESDAY, nueve, nueve.plusHours(1), 30, true, CREADO, ACTUALIZADO);
+    }
 }
