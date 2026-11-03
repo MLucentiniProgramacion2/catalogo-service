@@ -8,8 +8,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ar.edu.um.programacion2.catalogo.IntegrationTest;
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.PageQuery;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.Professional;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalCategory;
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalSearchCriteria;
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalWithCategory;
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.ResultPage;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.WeeklySchedule;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.CatalogRepository;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.adapter.JpaCatalogRepositoryAdapter;
@@ -296,6 +300,11 @@ class FullSyncIT {
         @Override
         public List<ProfessionalCategory> findCategories(Boolean enabled) {
             return delegate.findCategories(enabled);
+        }
+
+        @Override
+        public ResultPage<ProfessionalWithCategory> searchProfessionals(ProfessionalSearchCriteria criteria, PageQuery pageQuery) {
+            return delegate.searchProfessionals(criteria, pageQuery);
         }
     }
 }

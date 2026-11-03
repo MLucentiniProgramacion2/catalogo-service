@@ -1,20 +1,31 @@
 package ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.adapter;
 
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.PageQuery;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.Professional;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalCategory;
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalSearchCriteria;
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalWithCategory;
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.ResultPage;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.WeeklySchedule;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.CatalogRepository;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.entity.ProfessionalCategoryEntity;
+import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.entity.ProfessionalEntity;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.mapper.ProfessionalCategoryMapper;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.mapper.ProfessionalMapper;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.mapper.WeeklyScheduleMapper;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.repository.JpaProfessionalCategoryRepository;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.repository.JpaProfessionalRepository;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.repository.JpaWeeklyScheduleRepository;
+import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.repository.ProfessionalSpecifications;
 import jakarta.persistence.EntityManager;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +55,9 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>
  * Las lecturas usan consultas derivadas con el filtro y el orden en el nombre del método: filtra y ordena la base, no la
  * memoria. También son {@code MANDATORY}: la transacción (y su aislamiento) la elige el caso de uso.
+ * <p>
+ * La búsqueda de profesionales combina los filtros de {@link ProfessionalSpecifications} y pagina con Spring Data: una
+ * consulta de datos (con la categoría, por el {@code @EntityGraph} del repositorio) y, si hace falta, una de count.
  */
 @Repository
 @Transactional(propagation = Propagation.MANDATORY)
@@ -86,5 +100,31 @@ public class JpaCatalogRepositoryAdapter implements CatalogRepository {
             ? categoryRepository.findAllByOrderByIdAsc()
             : categoryRepository.findByEnabledOrderByIdAsc(enabled);
         return rows.stream().map(categoryMapper::toDomain).toList();
+    }
+
+    @Override
+    public ResultPage<ProfessionalWithCategory> searchProfessionals(ProfessionalSearchCriteria criteria, PageQuery pageQuery) {
+        Objects.requireNonNull(criteria, "Falta el criterio de búsqueda");
+        Objects.requireNonNull(pageQuery, "Falta la página pedida");
+
+        List<Specification<ProfessionalEntity>> filters = new ArrayList<>();
+        filters.add(ProfessionalSpecifications.hasEnabled(criteria.enabled()));
+        if (criteria.categoryId() != null) {
+            filters.add(ProfessionalSpecifications.inCategory(criteria.categoryId()));
+        }
+        if (criteria.name() != null) {
+            filters.add(ProfessionalSpecifications.nameContains(criteria.name()));
+        }
+
+        Page<ProfessionalEntity> page = professionalRepository.findAll(
+            Specification.allOf(filters),
+            PageRequest.of(pageQuery.number(), pageQuery.size(), Sort.by("id"))
+        );
+        List<ProfessionalWithCategory> items = page
+            .getContent()
+            .stream()
+            .map(entity -> new ProfessionalWithCategory(professionalMapper.toDomain(entity), categoryMapper.toDomain(entity.getCategory())))
+            .toList();
+        return new ResultPage<>(items, pageQuery.number(), pageQuery.size(), page.getTotalElements());
     }
 }
