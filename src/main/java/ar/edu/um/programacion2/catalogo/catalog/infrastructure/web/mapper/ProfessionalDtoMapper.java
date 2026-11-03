@@ -1,5 +1,6 @@
 package ar.edu.um.programacion2.catalogo.catalog.infrastructure.web.mapper;
 
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.AvailabilityFilter;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.PageQuery;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalCategory;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalSearchCriteria;
@@ -29,7 +30,12 @@ public class ProfessionalDtoMapper {
     public static final int DEFAULT_SIZE = 20;
 
     public ProfessionalSearchCriteria toCriteria(ProfessionalSearchParams params) {
-        return ProfessionalSearchCriteria.of(params.categoryId(), params.name(), params.enabled());
+        return ProfessionalSearchCriteria.of(params.categoryId(), params.name(), params.enabled(), toAvailability(params));
+    }
+
+    /** Sin día no hay filtro de disponibilidad; una franja sin día ya la rechazó la validación de los parámetros. */
+    private static AvailabilityFilter toAvailability(ProfessionalSearchParams params) {
+        return params.day() == null ? null : new AvailabilityFilter(params.day(), params.from(), params.to());
     }
 
     public PageQuery toPageQuery(ProfessionalSearchParams params) {

@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Adaptador de entrada REST de CU-05:
- * {@code GET /api/professionals?categoryId=&name=&enabled=&page=&size=}.
+ * {@code GET /api/professionals?categoryId=&name=&enabled=&day=&from=&to=&page=&size=}.
  * <p>
  * Lo protege la regla de {@code /api/**} de {@code SecurityConfiguration}: sin token o con uno inválido, 401; con el
  * token técnico de servicio o sin {@code ROLE_USER}/{@code ROLE_ADMIN}, 403 (DP-06).

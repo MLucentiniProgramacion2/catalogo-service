@@ -18,6 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import ar.edu.um.programacion2.catalogo.IntegrationTest;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.Professional;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalCategory;
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.WeeklySchedule;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.CatalogRepository;
 import ar.edu.um.programacion2.catalogo.sync.SyncTestDatabase;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncErrorType;
@@ -28,7 +29,9 @@ import jakarta.persistence.EntityManager;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
@@ -44,6 +47,7 @@ import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
@@ -232,6 +236,7 @@ class ProfessionalControllerIT {
             Statement statement = sync.createStatement()
         ) {
             sync.setAutoCommit(false);
+            statement.executeUpdate("delete from weekly_schedule");
             statement.executeUpdate("delete from professional");
             statement.executeUpdate(
                 "insert into professional (id, category_id, first_name, last_name, enabled, created_at, updated_at) " +
@@ -248,7 +253,73 @@ class ProfessionalControllerIT {
         }
     }
 
+    // ---- disponibilidad ----
+
+    @Test
+    void conDiaDevuelveLosQueAtiendenEseDia() throws Exception {
+        aplicarVersion1();
+
+        pedirConParametros("day=MONDAY").andExpect(status().isOk()).andExpect(jsonPath("$.professionals[*].id").value(contains(1, 3)));
+        pedirConParametros("day=TUESDAY").andExpect(jsonPath("$.professionals[*].id").value(contains(5)));
+        pedirConParametros("day=SUNDAY").andExpect(jsonPath("$.professionals", hasSize(0)));
+    }
+
+    @Test
+    void conDiaYFranjaEnHHmmYEnHHmmssDevuelvenLoMismo() throws Exception {
+        aplicarVersion1();
+
+        pedirConParametros("day=MONDAY;from=10:00;to=11:00").andExpect(status().isOk()).andExpect(jsonPath("$.professionals[*].id").value(contains(1)));
+        pedirConParametros("day=MONDAY;from=10:00:00;to=11:00:00").andExpect(jsonPath("$.professionals[*].id").value(contains(1)));
+    }
+
+    @Test
+    void unaFranjaAbiertaQueEmpiezaCuandoTerminaUnHorarioNoLoIncluye() throws Exception {
+        aplicarVersion1();
+
+        pedirConParametros("day=MONDAY;from=12:00").andExpect(jsonPath("$.professionals[*].id").value(contains(3)));
+        pedirConParametros("day=MONDAY;to=14:00").andExpect(jsonPath("$.professionals[*].id").value(contains(1)));
+    }
+
+    @Test
+    void laDisponibilidadSeCombinaConEnabled() throws Exception {
+        aplicarVersion1();
+
+        pedirConParametros("day=MONDAY;enabled=false").andExpect(jsonPath("$.professionals[*].id").value(contains(2)));
+    }
+
     // ---- 400 ----
+
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(
+        delimiter = '|',
+        value = {
+            "day=valorInventado|day|Failed to convert value",
+            "day=monday|day|Failed to convert value",
+            "day=MONDAY;from=valorInventado|from|Failed to convert value",
+            "day=MONDAY;from=9:00|from|Failed to convert value",
+            "day=MONDAY;to=24:00|to|Failed to convert value",
+            "day=MONDAY;from=12:00;to=10:00|timeRangeOrdered|from must be before to",
+            "day=MONDAY;from=10:00;to=10:00|timeRangeOrdered|from must be before to",
+            "from=10:00;to=11:00|timeRangeHasDay|from and to require day",
+            "from=10:00|timeRangeHasDay|from and to require day",
+            "to=11:00|timeRangeHasDay|from and to require day",
+        }
+    )
+    void unaDisponibilidadInvalidaResponde400ConElCampo(String parametros, String campo, String mensaje) throws Exception {
+        aplicarVersion1();
+
+        pedirConParametros(parametros)
+            .andExpect(status().isBadRequest())
+            .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.type").value("https://www.jhipster.tech/problem/constraint-violation"))
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.detail").value("Invalid request parameters"))
+            .andExpect(jsonPath("$.fieldErrors", hasSize(1)))
+            .andExpect(jsonPath("$.fieldErrors[0].field").value(campo))
+            .andExpect(jsonPath("$.fieldErrors[0].message").value(mensaje))
+            .andExpect(content().string(not(containsString("valorInventado"))))
+            .andExpect(content().string(not(containsString("java."))));
+    }
 
     @ParameterizedTest(name = "{0}")
     @CsvSource(
@@ -383,13 +454,23 @@ class ProfessionalControllerIT {
                 profesional(3, 2, "Ángel", "Núñez", true),
                 profesional(1, 1, "Ana", "Perez", true),
                 profesional(4, 2, "Bruno", "Gomez", false)
+            ),
+            List.of(
+                horario(10, 1, DayOfWeek.MONDAY, "09:00", "12:00"),
+                horario(20, 2, DayOfWeek.MONDAY, "09:00", "12:00"),
+                horario(30, 3, DayOfWeek.MONDAY, "14:00", "18:00"),
+                horario(50, 5, DayOfWeek.TUESDAY, "09:00", "12:00")
             )
         );
     }
 
     private void aplicar(long version, List<ProfessionalCategory> categorias, List<Professional> profesionales) {
+        aplicar(version, categorias, profesionales, List.of());
+    }
+
+    private void aplicar(long version, List<ProfessionalCategory> categorias, List<Professional> profesionales, List<WeeklySchedule> horarios) {
         transactionTemplate.executeWithoutResult(tx -> {
-            catalogRepository.replaceAll(categorias, profesionales, List.of());
+            catalogRepository.replaceAll(categorias, profesionales, horarios);
             SyncStatus estado = syncStatusRepository.load();
             estado.recordSnapshotApplied(version, SyncTrigger.STARTUP, T1);
             syncStatusRepository.save(estado);
@@ -405,6 +486,16 @@ class ProfessionalControllerIT {
         return mvc.perform(get(PROFESIONALES).param("name", nombre).header(AUTHORIZATION, BEARER + tokenDeUsuario("ROLE_USER")));
     }
 
+    /** Parámetros como {@code "k=v;k=v"}, cada uno con {@code param}: los valores llevan {@code :} y no se tocan. */
+    private ResultActions pedirConParametros(String parametros) throws Exception {
+        MockHttpServletRequestBuilder pedido = get(PROFESIONALES).header(AUTHORIZATION, BEARER + tokenDeUsuario("ROLE_USER"));
+        for (String parametro : parametros.split(";")) {
+            String[] claveValor = parametro.split("=", 2);
+            pedido.param(claveValor[0], claveValor[1]);
+        }
+        return mvc.perform(pedido);
+    }
+
     private String tokenDeUsuario(String roles) {
         return token("ana.perez", claims -> claims.claim(AUTHORITIES_CLAIM, roles).claim("userId", 7));
     }
@@ -415,6 +506,10 @@ class ProfessionalControllerIT {
 
     private static ProfessionalCategory categoria(long id, String nombre, boolean habilitada) {
         return new ProfessionalCategory(id, nombre, null, habilitada, CREADO, CREADO);
+    }
+
+    private static WeeklySchedule horario(long id, long profesional, DayOfWeek dia, String inicio, String fin) {
+        return new WeeklySchedule(id, profesional, dia, LocalTime.parse(inicio), LocalTime.parse(fin), 30, true, CREADO, CREADO);
     }
 
     private static Professional profesional(long id, long categoryId, String firstName, String lastName, boolean enabled) {

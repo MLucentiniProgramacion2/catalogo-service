@@ -2,6 +2,7 @@ package ar.edu.um.programacion2.catalogo.catalog.infrastructure.web.mapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.AvailabilityFilter;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.PageQuery;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.Professional;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalCategory;
@@ -13,7 +14,9 @@ import ar.edu.um.programacion2.catalogo.catalog.infrastructure.web.dto.CategoryS
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.web.dto.ProfessionalPageResponse;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.web.dto.ProfessionalResponse;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.web.dto.ProfessionalSearchParams;
+import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.LocalTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +28,7 @@ class ProfessionalDtoMapperTest {
 
     @Test
     void sinParametrosElCriterioTomaLosHabilitadosYLaPrimeraPaginaDe20() {
-        ProfessionalSearchParams params = new ProfessionalSearchParams(null, null, null, null, null);
+        ProfessionalSearchParams params = new ProfessionalSearchParams(null, null, null, null, null, null, null, null);
 
         assertThat(mapper.toCriteria(params)).isEqualTo(new ProfessionalSearchCriteria(null, null, true, null));
         assertThat(mapper.toPageQuery(params)).isEqualTo(new PageQuery(0, 20));
@@ -33,10 +36,22 @@ class ProfessionalDtoMapperTest {
 
     @Test
     void conParametrosLosPasaAlDominio() {
-        ProfessionalSearchParams params = new ProfessionalSearchParams(3L, " ana ", false, 2, 5);
+        ProfessionalSearchParams params = new ProfessionalSearchParams(3L, " ana ", false, 2, 5, null, null, null);
 
         assertThat(mapper.toCriteria(params)).isEqualTo(new ProfessionalSearchCriteria(3L, "ana", false, null));
         assertThat(mapper.toPageQuery(params)).isEqualTo(new PageQuery(2, 5));
+    }
+
+    @Test
+    void conDiaYFranjaArmaElFiltroDeDisponibilidad() {
+        ProfessionalSearchParams params = new ProfessionalSearchParams(null, null, null, null, null, DayOfWeek.MONDAY, LocalTime.of(9, 0), null);
+
+        assertThat(mapper.toCriteria(params).availability()).isEqualTo(new AvailabilityFilter(DayOfWeek.MONDAY, LocalTime.of(9, 0), null));
+    }
+
+    @Test
+    void sinDiaNoHayFiltroDeDisponibilidad() {
+        assertThat(mapper.toCriteria(new ProfessionalSearchParams(null, null, null, null, null, null, null, null)).availability()).isNull();
     }
 
     @Test
