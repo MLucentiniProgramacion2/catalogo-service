@@ -55,4 +55,43 @@ class HexagonalArchitectureTest {
         .resideInAPackage(FEATURE_INFRASTRUCTURE)
         .because("los use cases dependen de puertos, no de adapters")
         .allowEmptyShould(true);
+
+    static final String FEATURE_WEB = "ar.edu.um.programacion2.catalogo.*.infrastructure.web..";
+    static final String FEATURE_MESSAGING = "ar.edu.um.programacion2.catalogo.*.infrastructure.messaging..";
+    static final String FEATURE_PERSISTENCE = "ar.edu.um.programacion2.catalogo.*.infrastructure.persistence..";
+
+    // De cualquier feature a cualquier feature: un controller de catalog tampoco puede usar la persistencia de sync.
+    @ArchTest
+    static final ArchRule adaptadoresDeEntradaNoDependenDePersistence = noClasses()
+        .that()
+        .resideInAnyPackage(FEATURE_WEB, FEATURE_MESSAGING)
+        .should()
+        .dependOnClassesThat()
+        .resideInAPackage(FEATURE_PERSISTENCE)
+        .because("los adaptadores de entrada llaman al XxxService; las entidades y repositorios JPA no salen de persistence")
+        .allowEmptyShould(true);
+
+    /**
+     * {@code sync} usa a {@code catalog} (CU-02 reemplaza la copia local con {@code CatalogRepository}): si {@code catalog}
+     * usara a {@code sync}, las dos features quedarían en un ciclo. Lo que {@code catalog} necesite de {@code sync} va
+     * como puerto de salida de {@code catalog}, implementado por un adaptador de {@code sync}.
+     */
+    @ArchTest
+    static final ArchRule catalogNoDependeDeSync = featureNoDependeDe("catalog", "sync");
+
+    /**
+     * Regla "la feature {@code origen} no depende de la feature {@code destino}". Es un método para que
+     * {@link ArquitecturaDetectaViolacionesTest} pruebe la misma construcción con la feature de ejemplo, sin poner clases
+     * de ejemplo dentro de {@code catalog}.
+     */
+    static ArchRule featureNoDependeDe(String origen, String destino) {
+        return noClasses()
+            .that()
+            .resideInAPackage("ar.edu.um.programacion2.catalogo." + origen + "..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAPackage("ar.edu.um.programacion2.catalogo." + destino + "..")
+            .because("la feature " + destino + " usa a " + origen + "; la dependencia inversa va como puerto de salida de " + origen)
+            .allowEmptyShould(true);
+    }
 }

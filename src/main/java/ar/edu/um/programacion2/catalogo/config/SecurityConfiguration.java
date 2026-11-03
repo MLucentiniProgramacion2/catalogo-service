@@ -27,10 +27,19 @@ public class SecurityConfiguration {
     public SecurityFilterChain filterChain(HttpSecurity http) {
         http.csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(authz ->
+                // Spring usa la primera regla cuyo patrón coincide con el pedido y no mira las siguientes: las rutas
+                // específicas van antes que /api/**. Si /api/** estuviera primero, /api/admin/** quedaría abierto a
+                // cualquier usuario. La regla del endpoint de agenda de CU-07 (ROLE_SERVICE con aud=catalogo-service e
+                // iss=turnos-service, DP-06) también va antes de /api/**: si no, /api/** le daría 403 al token de servicio.
+                //
+                // /api/** es la regla de los endpoints de usuario (CU-05, CU-06, CU-09). Es una lista de permitidos:
+                // pide ROLE_USER o ROLE_ADMIN, así que el token técnico de servicio (que solo trae ROLE_SERVICE) y un
+                // token sin roles reciben 403 (DP-06). ROLE_ADMIN está porque en turnos un admin puede quedar solo con
+                // ese rol (lo permite /api/admin/users).
                 // prettier-ignore
                 authz
                     .requestMatchers("/api/admin/**").hasAuthority(AuthoritiesConstants.ADMIN)
-                    .requestMatchers("/api/**").authenticated()
+                    .requestMatchers("/api/**").hasAnyAuthority(AuthoritiesConstants.USER, AuthoritiesConstants.ADMIN)
                     .requestMatchers("/v3/api-docs/**").hasAuthority(AuthoritiesConstants.ADMIN)
                     .requestMatchers("/management/health").permitAll()
                     .requestMatchers("/management/health/**").permitAll()

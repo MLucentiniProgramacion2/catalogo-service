@@ -32,6 +32,11 @@ public class ExceptionTranslatorTestController {
         // empty method
     }
 
+    @GetMapping("/type-mismatch")
+    public void typeMismatch(@RequestParam("flag") Boolean flag) {
+        // empty method
+    }
+
     @GetMapping("/access-denied")
     public void accessdenied() {
         throw new AccessDeniedException("test access denied!");

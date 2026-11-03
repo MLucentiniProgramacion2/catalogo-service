@@ -4,6 +4,7 @@ import ar.edu.um.programacion2.catalogo.catalog.domain.model.Professional;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalCategory;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.WeeklySchedule;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.CatalogRepository;
+import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.entity.ProfessionalCategoryEntity;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.mapper.ProfessionalCategoryMapper;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.mapper.ProfessionalMapper;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.mapper.WeeklyScheduleMapper;
@@ -40,6 +41,9 @@ import org.springframework.transaction.annotation.Transactional;
  * borrada. {@code @Repository} hace que Spring traduzca las fallas de la base, incluidas las de {@code persist} y
  * {@code flush}, a {@code DataAccessException}; también traduce las {@code IllegalArgumentException} de los mappers a
  * {@code InvalidDataAccessApiUsageException}.
+ * <p>
+ * Las lecturas usan consultas derivadas con el filtro y el orden en el nombre del método: filtra y ordena la base, no la
+ * memoria. También son {@code MANDATORY}: la transacción (y su aislamiento) la elige el caso de uso.
  */
 @Repository
 @Transactional(propagation = Propagation.MANDATORY)
@@ -74,5 +78,13 @@ public class JpaCatalogRepositoryAdapter implements CatalogRepository {
             )
         );
         entityManager.flush();
+    }
+
+    @Override
+    public List<ProfessionalCategory> findCategories(Boolean enabled) {
+        List<ProfessionalCategoryEntity> rows = enabled == null
+            ? categoryRepository.findAllByOrderByIdAsc()
+            : categoryRepository.findByEnabledOrderByIdAsc(enabled);
+        return rows.stream().map(categoryMapper::toDomain).toList();
     }
 }

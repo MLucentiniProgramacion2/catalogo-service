@@ -235,6 +235,37 @@ class JpaCatalogRepositoryAdapterIT {
     }
 
     @Test
+    void sinFiltroDevuelveTodasLasCategoriasOrdenadasPorId() {
+        // Se guardan desordenadas: sin el ORDER BY, PostgreSQL las devolvería en el orden en que se insertaron.
+        guardar(new Catalogo(categoriasDesordenadas(), List.of(), List.of()));
+
+        assertThat(categorias(null)).containsExactly(
+            categoria(1, "Pediatria", null, false),
+            categoria(2, "Cardiologia", "Corazon", true),
+            categoria(3, "Clinica medica", "Atencion clinica general", true)
+        );
+    }
+
+    @Test
+    void conFiltroDevuelveSoloLasDeEseEstadoOrdenadasPorId() {
+        guardar(new Catalogo(categoriasDesordenadas(), List.of(), List.of()));
+
+        assertThat(categorias(true)).extracting(ProfessionalCategory::id).containsExactly(2L, 3L);
+        assertThat(categorias(false)).extracting(ProfessionalCategory::id).containsExactly(1L);
+    }
+
+    @Test
+    void sinCategoriasDevuelveUnaListaVacia() {
+        assertThat(categorias(null)).isEmpty();
+        assertThat(categorias(true)).isEmpty();
+    }
+
+    @Test
+    void leerCategoriasSinTransaccionFalla() {
+        assertThatThrownBy(() -> catalogRepository.findCategories(null)).isInstanceOf(IllegalTransactionStateException.class);
+    }
+
+    @Test
     void mientrasNoSeConfirmaOtraTransaccionSigueViendoLaCopiaAnterior() throws SQLException {
         guardar(catalogoChico());
 
@@ -274,6 +305,18 @@ class JpaCatalogRepositoryAdapterIT {
         } catch (SQLException e) {
             return fail("Otra transacción no pudo leer la copia mientras se reemplazaba (¿un lock exclusivo?): " + e.getMessage(), e);
         }
+    }
+
+    private List<ProfessionalCategory> categorias(Boolean habilitadas) {
+        return transactionTemplate.execute(tx -> catalogRepository.findCategories(habilitadas));
+    }
+
+    private static List<ProfessionalCategory> categoriasDesordenadas() {
+        return List.of(
+            categoria(3, "Clinica medica", "Atencion clinica general", true),
+            categoria(1, "Pediatria", null, false),
+            categoria(2, "Cardiologia", "Corazon", true)
+        );
     }
 
     private void guardar(Catalogo catalogo) {
