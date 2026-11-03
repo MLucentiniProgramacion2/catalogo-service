@@ -77,6 +77,11 @@ public final class ProfessionalSpecifications {
      * join, y el count de la paginación contaría filas de más. {@code EXISTS} solo pregunta si hay alguno, así que cada
      * profesional aparece una vez sin necesitar {@code distinct}. La subconsulta está correlacionada: compara contra el
      * profesional de la consulta de afuera ({@code root}).
+     * <p>
+     * Las horas de la franja van como {@code cast(? as time)}, con la hora como texto: las columnas guardan la hora sin
+     * convertir de zona ({@code WeeklyScheduleEntity}), y un {@code LocalTime} pasado tal cual a la comparación se
+     * convertiría de la zona de la JVM a UTC ({@code hibernate.jdbc.time_zone}), así que con la JVM en -03 se compararía
+     * contra una hora corrida 3 horas. Ver {@link #timeParameter}.
      */
     public static Specification<ProfessionalEntity> attendsOn(AvailabilityFilter availability) {
         Objects.requireNonNull(availability, "Falta el filtro de disponibilidad");
@@ -92,10 +97,10 @@ public final class ProfessionalSpecifications {
             conditions.add(cb.equal(schedule.get("dayOfWeek"), availability.day()));
             conditions.add(cb.lessThan(start, end));
             if (availability.from() != null) {
-                conditions.add(cb.greaterThan(end, availability.from()));
+                conditions.add(cb.greaterThan(end, timeParameter(cb, availability.from())));
             }
             if (availability.to() != null) {
-                conditions.add(cb.lessThan(start, availability.to()));
+                conditions.add(cb.lessThan(start, timeParameter(cb, availability.to())));
             }
             schedules.select(schedule.get("id")).where(conditions.toArray(Predicate[]::new));
             return cb.exists(schedules);
@@ -104,10 +109,22 @@ public final class ProfessionalSpecifications {
 
     /** El valor como parámetro de la sentencia (ver {@link #nameContains}). */
     private static Expression<String> parameter(CriteriaBuilder cb, String value) {
+        return hibernate(cb).value(value);
+    }
+
+    /**
+     * Una hora como parámetro, sin convertir de zona: {@code cast(? as time)} con la hora en texto ISO ({@code 20:00},
+     * {@code 20:00:30}). La convierte PostgreSQL, así que se compara exactamente la hora pedida contra la hora guardada.
+     */
+    static Expression<LocalTime> timeParameter(CriteriaBuilder cb, LocalTime time) {
+        return hibernate(cb).value(time.toString()).cast(LocalTime.class);
+    }
+
+    private static HibernateCriteriaBuilder hibernate(CriteriaBuilder cb) {
         if (cb instanceof HibernateCriteriaBuilder hibernate) {
-            return hibernate.value(value);
+            return hibernate;
         }
-        throw new IllegalStateException("La búsqueda por nombre necesita el CriteriaBuilder de Hibernate");
+        throw new IllegalStateException("La búsqueda necesita el CriteriaBuilder de Hibernate");
     }
 
     /** Antepone el escape a sí mismo y a los dos comodines del {@code LIKE}: primero el escape, para no duplicarlo. */
