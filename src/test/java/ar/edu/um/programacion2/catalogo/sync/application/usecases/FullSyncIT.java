@@ -292,5 +292,10 @@ class FullSyncIT {
             }
             delegate.replaceAll(categories, professionals, weeklySchedules);
         }
+
+        @Override
+        public List<ProfessionalCategory> findCategories(Boolean enabled) {
+            return delegate.findCategories(enabled);
+        }
     }
 }
