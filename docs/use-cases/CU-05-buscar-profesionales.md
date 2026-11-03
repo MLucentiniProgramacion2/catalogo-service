@@ -75,6 +75,91 @@ El usuario ejecuta una búsqueda desde la app.
   `INVALID_SLOT`, `SLOT_ALREADY_RESERVED` o `SLOT_ALREADY_HELD` (contrato §9 y §13.1).
 - **DP-06:** los endpoints de usuario rechazan el token técnico de servicio.
 
+## Contrato del endpoint (issue #27)
+
+```http
+GET /api/professionals?categoryId=&name=&enabled=&page=&size=
+Authorization: Bearer <jwt-de-usuario>
+```
+
+| Parámetro | Tipo | Regla |
+| --- | --- | --- |
+| `categoryId` | número | Opcional. Una categoría que no existe da lista vacía, no `404`. |
+| `name` | texto | Opcional. Hasta 100 caracteres, contados sobre el texto **recibido** (antes de recortar espacios). Ver abajo. |
+| `enabled` | `true` / `false` | Opcional. Si se omite, se toma `true` (DP-01). Distinto de CU-06, donde omitirlo significa "todas". |
+| `page` | entero ≥ 0 | Por defecto `0`. |
+| `size` | entero de 1 a 100 | Por defecto `20`. |
+
+La disponibilidad (`day`, `from`, `to`) se suma en la segunda parte del issue.
+
+- **Nombre:** se busca el texto, sin distinguir mayúsculas, dentro de "nombre apellido" (los dos campos unidos por un
+  espacio): `ana pe` encuentra a "Ana Perez", pero `perez ana` no. Se recortan los espacios de los extremos; vacío o
+  de solo espacios cuenta como filtro ausente. `%` y `_` se buscan como letras, no como comodines. Las tildes cuentan:
+  `ÁNGEL` encuentra a "Ángel", pero `Perez` no encuentra a "Pérez" (ignorar tildes necesitaría una extensión de
+  PostgreSQL).
+- **Mayúsculas con tilde:** las pasa a minúsculas PostgreSQL, según el locale de la base. Con el de la imagen oficial
+  (`en_US.utf8`) funciona; con una base creada con locale `C`, solo cambiarían las letras ASCII.
+- **Orden por `id`:** es único, así que el orden es total y estable entre páginas (un profesional no aparece en dos ni
+  en ninguna), y no depende de la collation. Si hace falta, la app reordena la página.
+- **Categoría deshabilitada:** un profesional habilitado de una categoría deshabilitada aparece con `enabled` omitido,
+  porque DP-01 mira el estado del profesional. La respuesta informa `category.enabled` y la app decide qué mostrar.
+  Respaldo: la matriz §13.1 del contrato no tiene un error de hold por categoría deshabilitada, solo
+  `PROFESSIONAL_DISABLED`.
+
+Respuesta `200 OK`:
+
+```json
+{
+  "catalogVersion": 1,
+  "page": 0,
+  "size": 20,
+  "totalElements": 24,
+  "totalPages": 2,
+  "professionals": [
+    {
+      "id": 1,
+      "firstName": "Ana",
+      "lastName": "Perez",
+      "enabled": true,
+      "category": { "id": 101, "name": "Clinica medica", "enabled": true }
+    }
+  ]
+}
+```
+
+`catalogVersion`, la página y `totalElements` salen de la misma transacción (`REPEATABLE READ`): un snapshot confirmado
+en el medio no los mezcla. Una página fuera de rango (por ejemplo `page=50`) responde `200` con `professionals: []` y
+los totales correctos; si ningún profesional cumple los filtros, también `200` con la lista vacía (5a).
+
+| Caso | Status | Cuerpo |
+| --- | --- | --- |
+| Sin token, firma inválida o vencido (2a) | `401` | vacío (Spring Security) |
+| Token de servicio o sin `ROLE_USER`/`ROLE_ADMIN` (2b) | `403` | vacío (Spring Security) |
+| Parámetro inválido (2c): fuera de rango, no convertible o `name` de más de 100 caracteres | `400` | `problem+json`, `code: VALIDATION_ERROR` y `fieldErrors` |
+| Sin versión aplicada (3a) | `503` | `problem+json`, `code: CATALOG_NOT_INITIALIZED`, sin `Retry-After` |
+
+El `400` tiene la forma del contrato §13, con un `fieldError` por parámetro inválido. Ni el `detail` ni los mensajes
+repiten el valor recibido:
+
+```json
+{
+  "type": "https://www.jhipster.tech/problem/constraint-violation",
+  "title": "Method argument not valid",
+  "status": 400,
+  "detail": "Invalid request parameters",
+  "message": "error.validation",
+  "path": "/api/professionals",
+  "code": "VALIDATION_ERROR",
+  "fieldErrors": [
+    { "objectName": "professionalSearchParams", "field": "page", "message": "must be greater than or equal to 0" },
+    { "objectName": "professionalSearchParams", "field": "size", "message": "Failed to convert value" }
+  ]
+}
+```
+
+Como en el contrato de la cátedra, la app decide por `status` y `code`, nunca por `detail` ni por el texto de
+`fieldErrors`.
+
 ## Respaldo en las consignas
 
 - Enunciado §4.1: filtros mínimos por categoría, nombre, estado habilitado y disponibilidad,
