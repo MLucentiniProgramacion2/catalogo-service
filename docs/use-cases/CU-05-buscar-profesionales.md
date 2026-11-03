@@ -78,7 +78,7 @@ El usuario ejecuta una búsqueda desde la app.
 ## Contrato del endpoint (issue #27)
 
 ```http
-GET /api/professionals?categoryId=&name=&enabled=&page=&size=
+GET /api/professionals?categoryId=&name=&enabled=&day=&from=&to=&page=&size=
 Authorization: Bearer <jwt-de-usuario>
 ```
 
@@ -87,10 +87,22 @@ Authorization: Bearer <jwt-de-usuario>
 | `categoryId` | número | Opcional. Una categoría que no existe da lista vacía, no `404`. |
 | `name` | texto | Opcional. Hasta 100 caracteres, contados sobre el texto **recibido** (antes de recortar espacios). Ver abajo. |
 | `enabled` | `true` / `false` | Opcional. Si se omite, se toma `true` (DP-01). Distinto de CU-06, donde omitirlo significa "todas". |
+| `day` | `MONDAY` a `SUNDAY` | Opcional. Solo esos valores, en mayúsculas, como el contrato §7. |
+| `from`, `to` | hora | Opcionales y solo con `day`. `HH:mm` o `HH:mm:ss` (contrato §4). Se puede mandar uno solo. |
 | `page` | entero ≥ 0 | Por defecto `0`. |
 | `size` | entero de 1 a 100 | Por defecto `20`. |
 
-La disponibilidad (`day`, `from`, `to`) se suma en la segunda parte del issue.
+- **Disponibilidad (paso 4, DP-01):** aparece el profesional que tiene al menos un horario semanal **habilitado** de
+  ese día que se superpone con la franja. Sin franja, alcanza con cualquier horario habilitado de ese día. No mira
+  ocupaciones ni turnos: los turnos libres los arma el servicio de turnos.
+  - Los horarios y la franja son intervalos **semiabiertos** `[inicio, fin)`: se superponen si `start < to` y
+    `end > from`. Un horario que termina a las 12:00 no se superpone con una franja que empieza a las 12:00.
+  - Con solo `from` o solo `to`, la franja queda abierta del otro lado.
+  - `from` tiene que ser anterior a `to`: con `from == to`, `[from, to)` está vacía y la búsqueda da `400`.
+  - Un horario con `startTime >= endTime` (el contrato no lo impide) es el intervalo vacío `[start, end)`: no se
+    superpone con ninguna franja y, sin franja, no cubre ninguna hora del día. No cuenta nunca, con franja o sin
+    ella. La regla no depende de los turnos: un horario con `slotDurationMinutes <= 0` sí cuenta.
+  - Un profesional con varios horarios que cumplen aparece una sola vez y cuenta una vez en `totalElements`.
 
 - **Nombre:** se busca el texto, sin distinguir mayúsculas, dentro de "nombre apellido" (los dos campos unidos por un
   espacio): `ana pe` encuentra a "Ana Perez", pero `perez ana` no. Se recortan los espacios de los extremos; vacío o
@@ -135,7 +147,7 @@ los totales correctos; si ningún profesional cumple los filtros, también `200`
 | --- | --- | --- |
 | Sin token, firma inválida o vencido (2a) | `401` | vacío (Spring Security) |
 | Token de servicio o sin `ROLE_USER`/`ROLE_ADMIN` (2b) | `403` | vacío (Spring Security) |
-| Parámetro inválido (2c): fuera de rango, no convertible o `name` de más de 100 caracteres | `400` | `problem+json`, `code: VALIDATION_ERROR` y `fieldErrors` |
+| Parámetro inválido (2c): fuera de rango, no convertible, `name` de más de 100 caracteres, día inexistente o en minúsculas, hora mal formada, `from` no anterior a `to`, franja sin día | `400` | `problem+json`, `code: VALIDATION_ERROR` y `fieldErrors` |
 | Sin versión aplicada (3a) | `503` | `problem+json`, `code: CATALOG_NOT_INITIALIZED`, sin `Retry-After` |
 
 El `400` tiene la forma del contrato §13, con un `fieldError` por parámetro inválido. Ni el `detail` ni los mensajes
@@ -156,6 +168,13 @@ repiten el valor recibido:
   ]
 }
 ```
+
+Las reglas que combinan parámetros tienen su propio `field`:
+
+| Regla | `field` | `message` |
+| --- | --- | --- |
+| `from` no anterior a `to` | `timeRangeOrdered` | `from must be before to` |
+| `from` o `to` sin `day` | `timeRangeHasDay` | `from and to require day` |
 
 Como en el contrato de la cátedra, la app decide por `status` y `code`, nunca por `detail` ni por el texto de
 `fieldErrors`.
