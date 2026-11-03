@@ -5,6 +5,8 @@ import static ar.edu.um.programacion2.catalogo.security.jwt.JwtAuthenticationTes
 import static ar.edu.um.programacion2.catalogo.security.jwt.JwtAuthenticationTestUtils.createExpiredToken;
 import static ar.edu.um.programacion2.catalogo.security.jwt.JwtAuthenticationTestUtils.createSignedToken;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.http.HttpHeaders.AUTHORIZATION;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -175,13 +177,18 @@ class CategoryControllerIT {
     void conUnEnabledInvalidoResponde400ConElFormatoDeJHipster() throws Exception {
         aplicarVersion1();
 
-        pedir(CATEGORIAS + "?enabled=abc", tokenDeUsuario("ROLE_USER"))
+        pedir(CATEGORIAS + "?enabled=valorInventado", tokenDeUsuario("ROLE_USER"))
             .andExpect(status().isBadRequest())
             .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
             .andExpect(jsonPath("$.status").value(400))
             .andExpect(jsonPath("$.message").value("error.http.400"))
             .andExpect(jsonPath("$.path").value(CATEGORIAS))
-            .andExpect(jsonPath("$.type").value("https://www.jhipster.tech/problem/problem-with-message"));
+            .andExpect(jsonPath("$.type").value("https://www.jhipster.tech/problem/problem-with-message"))
+            // Nombra el parámetro sin repetir el valor recibido; el code queda para los 400 de validación (CU-05).
+            .andExpect(jsonPath("$.detail").value("Failed to convert 'enabled'"))
+            .andExpect(jsonPath("$.code").doesNotExist())
+            .andExpect(content().string(not(containsString("valorInventado"))))
+            .andExpect(content().string(not(containsString("java.lang"))));
     }
 
     @Test
