@@ -1,8 +1,16 @@
 package ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.repository;
 
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.AvailabilityFilter;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.entity.ProfessionalEntity;
+import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.entity.WeeklyScheduleEntity;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import org.hibernate.query.criteria.HibernateCriteriaBuilder;
 import org.springframework.data.jpa.domain.Specification;
@@ -11,7 +19,8 @@ import org.springframework.data.jpa.domain.Specification;
  * Los filtros de la búsqueda de profesionales (CU-05), uno por método, para leerlos y probarlos por separado. El
  * adaptador combina los que vienen en el criterio.
  * <p>
- * Ninguno hace un join: la categoría se compara por su ID, que está en la fila del profesional ({@code category_id}).
+ * Ninguno hace un join: la categoría se compara por su ID, que está en la fila del profesional ({@code category_id}), y
+ * la disponibilidad es una subconsulta {@code EXISTS}.
  */
 public final class ProfessionalSpecifications {
 
@@ -49,6 +58,47 @@ public final class ProfessionalSpecifications {
         return (root, query, cb) -> {
             Expression<String> fullName = cb.concat(cb.concat(root.get("firstName"), " "), root.get("lastName"));
             return cb.like(cb.lower(fullName), cb.lower(parameter(cb, pattern)), LIKE_ESCAPE);
+        };
+    }
+
+    /**
+     * Atiende según sus horarios ({@link AvailabilityFilter}): existe al menos un horario del profesional, habilitado, de
+     * ese día, no vacío y que se superpone con la franja.
+     *
+     * <pre>
+     * exists (select ws.id from weekly_schedule ws
+     *         where ws.professional_id = p.id and ws.enabled and ws.day_of_week = ?
+     *           and ws.start_time &lt; ws.end_time      -- [start, end) no vacío
+     *           and ws.end_time &gt; ?                  -- solo si hay from
+     *           and ws.start_time &lt; ?)               -- solo si hay to
+     * </pre>
+     *
+     * Con {@code EXISTS} y no con un join: un profesional con dos horarios que coinciden aparecería dos veces con el
+     * join, y el count de la paginación contaría filas de más. {@code EXISTS} solo pregunta si hay alguno, así que cada
+     * profesional aparece una vez sin necesitar {@code distinct}. La subconsulta está correlacionada: compara contra el
+     * profesional de la consulta de afuera ({@code root}).
+     */
+    public static Specification<ProfessionalEntity> attendsOn(AvailabilityFilter availability) {
+        Objects.requireNonNull(availability, "Falta el filtro de disponibilidad");
+        return (root, query, cb) -> {
+            Subquery<Long> schedules = query.subquery(Long.class);
+            Root<WeeklyScheduleEntity> schedule = schedules.from(WeeklyScheduleEntity.class);
+            Expression<LocalTime> start = schedule.get("startTime");
+            Expression<LocalTime> end = schedule.get("endTime");
+
+            List<Predicate> conditions = new ArrayList<>();
+            conditions.add(cb.equal(schedule.get("professional"), root));
+            conditions.add(cb.isTrue(schedule.get("enabled")));
+            conditions.add(cb.equal(schedule.get("dayOfWeek"), availability.day()));
+            conditions.add(cb.lessThan(start, end));
+            if (availability.from() != null) {
+                conditions.add(cb.greaterThan(end, availability.from()));
+            }
+            if (availability.to() != null) {
+                conditions.add(cb.lessThan(start, availability.to()));
+            }
+            schedules.select(schedule.get("id")).where(conditions.toArray(Predicate[]::new));
+            return cb.exists(schedules);
         };
     }
 

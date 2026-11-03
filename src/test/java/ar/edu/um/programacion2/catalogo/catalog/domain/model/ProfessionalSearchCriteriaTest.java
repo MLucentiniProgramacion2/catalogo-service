@@ -40,8 +40,8 @@ class ProfessionalSearchCriteriaTest {
 
     @Test
     void elConstructorCanonicoTambienNormalizaElNombre() {
-        assertThat(new ProfessionalSearchCriteria(null, "  ", true).name()).isNull();
-        assertThat(new ProfessionalSearchCriteria(null, " Ana ", true).name()).isEqualTo("Ana");
+        assertThat(new ProfessionalSearchCriteria(null, "  ", true, null).name()).isNull();
+        assertThat(new ProfessionalSearchCriteria(null, " Ana ", true, null).name()).isEqualTo("Ana");
     }
 
     @Test

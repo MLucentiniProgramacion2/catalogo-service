@@ -48,7 +48,9 @@ public interface CatalogRepository {
      * Filtra, ordena y pagina la base, no la memoria.
      * <p>
      * Un filtro ausente ({@code null}) no restringe; {@code enabled} siempre filtra. El nombre se busca como texto: los
-     * comodines del {@code LIKE} ({@code %} y {@code _}) que escriba el usuario cuentan como letras. Por ID por la misma
+     * comodines del {@code LIKE} ({@code %} y {@code _}) que escriba el usuario cuentan como letras. La disponibilidad sigue
+     * las reglas de {@code AvailabilityFilter}, y un profesional aparece una sola vez aunque tenga varios horarios que la
+     * cumplan. Por ID por la misma
      * razón que {@link #findCategories}: es único, así que el orden es total y estable entre páginas.
      * <p>
      * La página y el total salen de la misma transacción. Se suma a la de quien llama y falla si no hay una abierta: la

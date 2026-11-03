@@ -70,7 +70,7 @@ class SearchProfessionalsUseCaseImplTest {
 
         ArgumentCaptor<ProfessionalSearchCriteria> criterio = ArgumentCaptor.forClass(ProfessionalSearchCriteria.class);
         verify(catalogRepository).searchProfessionals(criterio.capture(), eq(PAGINA));
-        assertThat(criterio.getValue()).isEqualTo(new ProfessionalSearchCriteria(7L, "ana pe", false));
+        assertThat(criterio.getValue()).isEqualTo(new ProfessionalSearchCriteria(7L, "ana pe", false, null));
     }
 
     @Test

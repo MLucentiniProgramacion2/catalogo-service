@@ -27,7 +27,7 @@ class ProfessionalDtoMapperTest {
     void sinParametrosElCriterioTomaLosHabilitadosYLaPrimeraPaginaDe20() {
         ProfessionalSearchParams params = new ProfessionalSearchParams(null, null, null, null, null);
 
-        assertThat(mapper.toCriteria(params)).isEqualTo(new ProfessionalSearchCriteria(null, null, true));
+        assertThat(mapper.toCriteria(params)).isEqualTo(new ProfessionalSearchCriteria(null, null, true, null));
         assertThat(mapper.toPageQuery(params)).isEqualTo(new PageQuery(0, 20));
     }
 
@@ -35,7 +35,7 @@ class ProfessionalDtoMapperTest {
     void conParametrosLosPasaAlDominio() {
         ProfessionalSearchParams params = new ProfessionalSearchParams(3L, " ana ", false, 2, 5);
 
-        assertThat(mapper.toCriteria(params)).isEqualTo(new ProfessionalSearchCriteria(3L, "ana", false));
+        assertThat(mapper.toCriteria(params)).isEqualTo(new ProfessionalSearchCriteria(3L, "ana", false, null));
         assertThat(mapper.toPageQuery(params)).isEqualTo(new PageQuery(2, 5));
     }
 

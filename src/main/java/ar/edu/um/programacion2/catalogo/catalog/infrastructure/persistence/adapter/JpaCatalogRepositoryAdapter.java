@@ -115,6 +115,9 @@ public class JpaCatalogRepositoryAdapter implements CatalogRepository {
         if (criteria.name() != null) {
             filters.add(ProfessionalSpecifications.nameContains(criteria.name()));
         }
+        if (criteria.availability() != null) {
+            filters.add(ProfessionalSpecifications.attendsOn(criteria.availability()));
+        }
 
         Page<ProfessionalEntity> page = professionalRepository.findAll(
             Specification.allOf(filters),

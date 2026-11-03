@@ -15,8 +15,9 @@ package ar.edu.um.programacion2.catalogo.catalog.domain.model;
  *                   coincide ningún profesional.
  * @param name       texto a buscar en "nombre apellido", sin distinguir mayúsculas, o {@code null} para no filtrar
  * @param enabled    {@code true} para los habilitados, {@code false} para los deshabilitados (bajas lógicas)
+ * @param availability día y franja en que el profesional atiende, o {@code null} para no filtrar por disponibilidad
  */
-public record ProfessionalSearchCriteria(Long categoryId, String name, boolean enabled) {
+public record ProfessionalSearchCriteria(Long categoryId, String name, boolean enabled, AvailabilityFilter availability) {
     /** Valor de {@code enabled} cuando el usuario no lo indica (DP-01): los que se pueden reservar. */
     public static final boolean DEFAULT_ENABLED = true;
 
@@ -29,7 +30,12 @@ public record ProfessionalSearchCriteria(Long categoryId, String name, boolean e
      *
      * @param enabled {@code null} si el usuario no lo indicó: se toma {@link #DEFAULT_ENABLED}
      */
+    public static ProfessionalSearchCriteria of(Long categoryId, String name, Boolean enabled, AvailabilityFilter availability) {
+        return new ProfessionalSearchCriteria(categoryId, name, enabled == null ? DEFAULT_ENABLED : enabled, availability);
+    }
+
+    /** Sin filtro de disponibilidad. */
     public static ProfessionalSearchCriteria of(Long categoryId, String name, Boolean enabled) {
-        return new ProfessionalSearchCriteria(categoryId, name, enabled == null ? DEFAULT_ENABLED : enabled);
+        return of(categoryId, name, enabled, null);
     }
 }
