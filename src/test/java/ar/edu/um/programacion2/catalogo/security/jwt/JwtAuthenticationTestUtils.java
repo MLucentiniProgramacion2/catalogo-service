@@ -10,6 +10,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.util.List;
+import java.util.function.Consumer;
 import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -57,6 +58,19 @@ public class JwtAuthenticationTestUtils {
 
         JwsHeader jwsHeader = JwsHeader.with(JWT_ALGORITHM).build();
         return encoder.encode(JwtEncoderParameters.from(jwsHeader, claims)).getTokenValue();
+    }
+
+    /**
+     * Firma con la clave {@code jwtKey} un token con los claims que agregue quien llama, sobre {@code sub}, {@code iat}
+     * y {@code exp} (60 segundos). Sirve para armar tokens con la forma exacta que emite turnos.
+     */
+    public static String createSignedToken(String jwtKey, String user, Consumer<JwtClaimsSet.Builder> claims) {
+        var now = Instant.now();
+        JwtClaimsSet.Builder builder = JwtClaimsSet.builder().issuedAt(now).expiresAt(now.plusSeconds(60)).subject(user);
+        claims.accept(builder);
+
+        JwsHeader jwsHeader = JwsHeader.with(JWT_ALGORITHM).build();
+        return jwtEncoder(jwtKey).encode(JwtEncoderParameters.from(jwsHeader, builder.build())).getTokenValue();
     }
 
     public static String createTokenWithDifferentSignature() {
