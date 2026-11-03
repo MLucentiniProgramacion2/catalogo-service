@@ -65,6 +65,20 @@ class ExceptionTranslatorIT {
     }
 
     @Test
+    void testTypeMismatchConElFormatoDeJHipster() throws Exception {
+        mockMvc
+            .perform(get("/api/exception-translator-test/type-mismatch").param("flag", "abc"))
+            .andExpect(status().isBadRequest())
+            .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.type").value(ErrorConstants.DEFAULT_TYPE.toString()))
+            .andExpect(jsonPath("$.title").value("Bad Request"))
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.message").value("error.http.400"))
+            .andExpect(jsonPath("$.path").value("/api/exception-translator-test/type-mismatch"))
+            .andExpect(jsonPath("$.detail").value("Failed to convert 'flag' with value: 'abc'"));
+    }
+
+    @Test
     void testAccessDenied() throws Exception {
         mockMvc
             .perform(get("/api/exception-translator-test/access-denied"))

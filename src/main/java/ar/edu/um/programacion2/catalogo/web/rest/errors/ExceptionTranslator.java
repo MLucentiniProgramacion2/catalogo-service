@@ -14,6 +14,7 @@ import org.apache.commons.lang3.Strings;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.dao.ConcurrencyFailureException;
@@ -67,6 +68,29 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
         LOG.debug("Converting Exception to Problem Details:", ex);
         ProblemDetailWithCause pdCause = wrapAndCustomizeProblem(ex, request);
         return handleExceptionInternal((Exception) ex, pdCause, buildHeaders(ex), HttpStatusCode.valueOf(pdCause.getStatus()), request);
+    }
+
+    /**
+     * Parámetro que no se puede convertir al tipo declarado, como {@code ?enabled=abc} en un {@code Boolean} (CU-06; lo
+     * reusan los filtros de CU-05).
+     * <p>
+     * Cambio sobre lo que genera JHipster: Spring arma el cuerpo de este error antes de llegar a
+     * {@link #handleExceptionInternal}, que solo completa los cuerpos vacíos, así que el 400 salía sin {@code type},
+     * {@code message} ni {@code path}, a diferencia del resto de los errores (formato del contrato §13). Acá se arma un
+     * {@link ProblemDetailWithCause} con el mismo {@code detail} que usa Spring y se completa como los demás.
+     */
+    @Override
+    protected ResponseEntity<Object> handleTypeMismatch(
+        TypeMismatchException ex,
+        HttpHeaders headers,
+        HttpStatusCode status,
+        WebRequest request
+    ) {
+        ProblemDetailWithCause problem = ProblemDetailWithCauseBuilder.instance()
+            .withStatus(status.value())
+            .withDetail("Failed to convert '" + ex.getPropertyName() + "' with value: '" + ex.getValue() + "'")
+            .build();
+        return handleExceptionInternal(ex, customizeProblem(problem, ex, (NativeWebRequest) request), headers, status, request);
     }
 
     @SuppressWarnings("java:S2638")
