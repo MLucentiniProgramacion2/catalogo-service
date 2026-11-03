@@ -14,7 +14,10 @@ import ar.edu.um.programacion2.catalogo.archejemplo.domain.DominioQueUsaSecurity
 import ar.edu.um.programacion2.catalogo.archejemplo.domain.DominioQueUsaSpring;
 import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.FeatureQueUsaConfigDeJHipster;
 import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.FeatureQueUsaDomainDeJHipster;
+import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.FeatureQueUsaOtraFeature;
 import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.FeatureQueUsaWebDeJHipster;
+import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.messaging.MessagingQueUsaPersistence;
+import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.web.WebQueUsaPersistence;
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
@@ -70,6 +73,25 @@ class ArquitecturaDetectaViolacionesTest {
     void applicationNoDependeDeInfrastructureDetectaLaViolacion() {
         assertThat(clasesQueViolan(HexagonalArchitectureTest.applicationNoDependeDeInfrastructure, EJEMPLO)).containsExactly(
             nombres(ApplicationQueUsaInfrastructure.class)
+        );
+    }
+
+    @Test
+    void adaptadoresDeEntradaNoDependenDePersistenceDetectaWebYMessaging() {
+        // El controller de ejemplo también está en infrastructure.web y no se marca: llama al service, no a persistence.
+        assertThat(
+            clasesQueViolan(HexagonalArchitectureTest.adaptadoresDeEntradaNoDependenDePersistence, EJEMPLO)
+        ).containsExactlyInAnyOrder(nombres(WebQueUsaPersistence.class, MessagingQueUsaPersistence.class));
+    }
+
+    @Test
+    void featureNoDependeDeDetectaLaDependenciaEntreFeatures() {
+        // La misma construcción que catalogNoDependeDeSync, aplicada a la feature de ejemplo: así no hace falta poner
+        // una clase de ejemplo dentro de catalog. Se importa sync además del ejemplo, para que exista el destino.
+        JavaClasses ejemploYSync = new ClassFileImporter().importPackages(PAQUETE_EJEMPLO, "ar.edu.um.programacion2.catalogo.sync");
+
+        assertThat(clasesQueViolan(HexagonalArchitectureTest.featureNoDependeDe("archejemplo", "sync"), ejemploYSync)).containsExactly(
+            nombres(FeatureQueUsaOtraFeature.class)
         );
     }
 

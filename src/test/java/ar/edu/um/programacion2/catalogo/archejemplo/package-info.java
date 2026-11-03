@@ -6,7 +6,7 @@
  * incluyan. Las clases no llevan anotaciones de Spring ni {@code @Entity}: si las tuvieran, los tests de
  * integración las registrarían en el contexto al escanear {@code catalogo..}.
  * <p>
- * Las clases {@code DominioQueUsa*}, {@code ApplicationQueUsa*} y {@code FeatureQueUsa*} violan una regla cada una;
- * el resto cumple todas.
+ * Las clases {@code DominioQueUsa*}, {@code ApplicationQueUsa*}, {@code WebQueUsa*}, {@code MessagingQueUsa*} y
+ * {@code FeatureQueUsa*} violan una regla cada una; el resto cumple todas.
  */
 package ar.edu.um.programacion2.catalogo.archejemplo;
