@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import ar.edu.um.programacion2.catalogo.IntegrationTest;
 import ar.edu.um.programacion2.catalogo.sync.SyncLockHolder;
 import ar.edu.um.programacion2.catalogo.sync.SyncTestDatabase;
+import ar.edu.um.programacion2.catalogo.sync.application.service.SyncService;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncErrorType;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncStatus;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncTrigger;
@@ -25,6 +26,9 @@ class ExclusiveSyncIT {
 
     @Autowired
     private ExclusiveSync exclusiveSync;
+
+    @Autowired
+    private SyncService syncService;
 
     @Autowired
     private SyncLock syncLock;
@@ -56,6 +60,20 @@ class ExclusiveSyncIT {
         assertThat(estado.getLastErrorDescription()).contains("MANUAL");
         assertThat(estado.hasLocalCopy()).isFalse();
         assertThat(exclusiveSync.isRunning()).isFalse();
+    }
+
+    @Test
+    void elArranquePasaPorLaExclusion() {
+        // Con el lock retenido por otro hilo. Sin la exclusión, CU-01 iría a la cátedra (acá, el puerto 1, donde no escucha
+        // nadie) y el error registrado sería CATEDRA_UNAVAILABLE.
+        try (SyncLockHolder otra = SyncLockHolder.hold(syncLock)) {
+            syncService.initializeCatalog();
+        }
+
+        SyncStatus estado = transactionTemplate.execute(tx -> syncStatusRepository.load());
+        assertThat(estado.getLastErrorType()).isEqualTo(SyncErrorType.LOCK_TIMEOUT);
+        assertThat(estado.getLastErrorDescription()).contains("STARTUP");
+        assertThat(estado.hasLocalCopy()).isFalse();
     }
 
     @Test
