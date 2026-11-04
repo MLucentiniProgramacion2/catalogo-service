@@ -463,13 +463,16 @@ class ExecuteFullSyncUseCaseImplTest {
     }
 
     private ExecuteFullSyncUseCaseImpl casoDeUsoConSleeper(RetryBackoff.Sleeper sleeper) {
+        TransactionTemplate transactionTemplate = new TransactionTemplate(txManager);
+        Clock clock = Clock.fixed(AHORA, ZoneOffset.UTC);
         return new ExecuteFullSyncUseCaseImpl(
             provider,
             catalogRepository,
             syncStatusRepository,
-            new TransactionTemplate(txManager),
-            Clock.fixed(AHORA, ZoneOffset.UTC),
-            new RetryBackoff(DP_08, sleeper)
+            transactionTemplate,
+            clock,
+            new RetryBackoff(DP_08, sleeper),
+            new SyncErrorRecorder(syncStatusRepository, transactionTemplate, clock)
         );
     }
 
