@@ -1,7 +1,11 @@
 package ar.edu.um.programacion2.catalogo.catalog.domain.ports.out;
 
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.PageQuery;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.Professional;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalCategory;
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalSearchCriteria;
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalWithCategory;
+import ar.edu.um.programacion2.catalogo.catalog.domain.model.ResultPage;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.WeeklySchedule;
 import java.util.List;
 
@@ -38,4 +42,19 @@ public interface CatalogRepository {
      * leer en la misma transacción.
      */
     List<ProfessionalCategory> findCategories(Boolean enabled);
+
+    /**
+     * Profesionales de la copia local que cumplen los filtros, con su categoría, ordenados por ID y paginados (CU-05).
+     * Filtra, ordena y pagina la base, no la memoria.
+     * <p>
+     * Un filtro ausente ({@code null}) no restringe; {@code enabled} siempre filtra. El nombre se busca como texto: los
+     * comodines del {@code LIKE} ({@code %} y {@code _}) que escriba el usuario cuentan como letras. La disponibilidad sigue
+     * las reglas de {@code AvailabilityFilter}, y un profesional aparece una sola vez aunque tenga varios horarios que la
+     * cumplan. Por ID por la misma
+     * razón que {@link #findCategories}: es único, así que el orden es total y estable entre páginas.
+     * <p>
+     * La página y el total salen de la misma transacción. Se suma a la de quien llama y falla si no hay una abierta: la
+     * versión local se tiene que leer en la misma.
+     */
+    ResultPage<ProfessionalWithCategory> searchProfessionals(ProfessionalSearchCriteria criteria, PageQuery pageQuery);
 }

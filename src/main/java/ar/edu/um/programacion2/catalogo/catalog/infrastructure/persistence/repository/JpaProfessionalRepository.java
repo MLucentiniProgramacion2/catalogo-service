@@ -1,13 +1,22 @@
 package ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.repository;
 
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.entity.ProfessionalEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+/**
+ * Repositorio de Spring Data de los profesionales. Con {@link JpaSpecificationExecutor}, la búsqueda de CU-05 arma los
+ * filtros con {@link ProfessionalSpecifications}.
+ */
 @Repository
-public interface JpaProfessionalRepository extends JpaRepository<ProfessionalEntity, Long> {
+public interface JpaProfessionalRepository extends JpaRepository<ProfessionalEntity, Long>, JpaSpecificationExecutor<ProfessionalEntity> {
     /**
      * Borra todos los profesionales con un solo {@code DELETE}, sin cargarlos.
      * <p>
@@ -18,4 +27,16 @@ public interface JpaProfessionalRepository extends JpaRepository<ProfessionalEnt
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("delete from ProfessionalEntity")
     int deleteAllRows();
+
+    /**
+     * La búsqueda paginada, con la categoría de cada profesional cargada en la misma consulta.
+     * <p>
+     * La categoría es {@code LAZY}: sin el grafo, leer su nombre al armar la respuesta haría una consulta por
+     * profesional (N+1). {@code @EntityGraph} le pide a Hibernate que la traiga con un join en la consulta de datos. Spring
+     * Data no lo aplica a la consulta del count, que no necesita la categoría: por eso no va como fetch join dentro de una
+     * {@code Specification}, que también llegaría al count y lo haría fallar.
+     */
+    @Override
+    @EntityGraph(attributePaths = "category")
+    Page<ProfessionalEntity> findAll(Specification<ProfessionalEntity> spec, Pageable pageable);
 }
