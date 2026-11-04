@@ -105,6 +105,10 @@ sync:
     # Esperas cortas para que ningún test de integración duerma 7 s. Las de verdad (1 s, 2 s y 4 s)
     # las verifican los unitarios del caso de uso, sin dormir.
     delays: 10ms,20ms,40ms
+  lock:
+    # Corta para que los tests que dejan vencer la espera no duerman 6 min. La de verdad la fija
+    # SyncPropertiesTest.
+    wait-timeout: 200ms
 
 application:
   liquibase:

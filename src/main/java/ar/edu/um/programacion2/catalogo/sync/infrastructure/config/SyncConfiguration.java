@@ -1,14 +1,16 @@
 package ar.edu.um.programacion2.catalogo.sync.infrastructure.config;
 
 import ar.edu.um.programacion2.catalogo.sync.application.usecases.RetryBackoff;
+import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SyncLock;
+import ar.edu.um.programacion2.catalogo.sync.infrastructure.lock.InMemorySyncLock;
 import java.time.Clock;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Arma, a partir de {@link SyncProperties}, lo que los casos de uso necesitan y no son puertos: el reloj y la política
- * de reintentos. {@code application} no puede depender de esta clase ni de las propiedades (ArchUnit), así que recibe
+ * Arma, a partir de {@link SyncProperties}, lo que los casos de uso necesitan y depende de la configuración: el reloj, la
+ * política de reintentos y la exclusión mutua. {@code application} no puede depender de esta clase ni de las propiedades (ArchUnit), así que recibe
  * los objetos ya armados.
  */
 @Configuration
@@ -25,5 +27,11 @@ public class SyncConfiguration {
     @Bean
     public RetryBackoff retryBackoff(SyncProperties properties) {
         return new RetryBackoff(properties.getRetry().getDelays(), Thread::sleep);
+    }
+
+    /** La exclusión mutua de DP-09, en memoria: una sola instancia del servicio. */
+    @Bean
+    public SyncLock syncLock(SyncProperties properties) {
+        return new InMemorySyncLock(properties.getLock().getWaitTimeout());
     }
 }

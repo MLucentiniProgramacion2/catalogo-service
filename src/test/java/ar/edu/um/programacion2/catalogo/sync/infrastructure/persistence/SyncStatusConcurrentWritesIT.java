@@ -7,13 +7,16 @@ import static ar.edu.um.programacion2.catalogo.sync.SnapshotJson.snapshot;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import ar.edu.um.programacion2.catalogo.IntegrationTest;
+import ar.edu.um.programacion2.catalogo.sync.SyncLockHolder;
 import ar.edu.um.programacion2.catalogo.sync.SyncTestDatabase;
+import ar.edu.um.programacion2.catalogo.sync.application.usecases.ExclusiveSync;
 import ar.edu.um.programacion2.catalogo.sync.application.usecases.SyncErrorRecorder;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.FullSyncResult;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncErrorType;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncStatus;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncTrigger;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.ExecuteFullSyncUseCase;
+import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SyncLock;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SyncStatusRepository;
 import ar.edu.um.programacion2.catalogo.sync.infrastructure.client.FakeCatedraServer;
 import ar.edu.um.programacion2.catalogo.sync.infrastructure.persistence.adapter.JpaSyncStatusRepositoryAdapter;
@@ -59,6 +62,12 @@ class SyncStatusConcurrentWritesIT {
 
     @Autowired
     private SyncErrorRecorder syncErrorRecorder;
+
+    @Autowired
+    private ExclusiveSync exclusiveSync;
+
+    @Autowired
+    private SyncLock syncLock;
 
     @Autowired
     private ExecuteFullSyncUseCase executeFullSyncUseCase;
@@ -135,6 +144,28 @@ class SyncStatusConcurrentWritesIT {
         assertThat(estado.getLocalVersion()).isEqualTo(2L);
         assertThat(estado.getLastErrorType()).isEqualTo(SyncErrorType.LOCK_TIMEOUT);
         assertThat(estado.getLastErrorDescription()).isEqualTo(TIMEOUT);
+    }
+
+    @Test
+    void elLockTimeoutDeLaExclusionNoPisaLaVersionDeLaSincronizacionQueLaTiene() {
+        versionLocal(1);
+        interleaving.afterNextLoad(() ->
+            ejecutar(
+                """
+                update sync_status set local_version = 2, last_success_at = now(),
+                    last_success_path = 'SNAPSHOT', last_success_trigger = 'MANUAL'
+                where id = 1
+                """
+            )
+        );
+
+        try (SyncLockHolder otraSincronizacion = SyncLockHolder.hold(syncLock)) {
+            assertThat(exclusiveSync.run(SyncTrigger.MANUAL, () -> "no tiene que correr")).isEmpty();
+        }
+
+        SyncStatus estado = estado();
+        assertThat(estado.getLocalVersion()).isEqualTo(2L);
+        assertThat(estado.getLastErrorType()).isEqualTo(SyncErrorType.LOCK_TIMEOUT);
     }
 
     private void versionLocal(long version) {
