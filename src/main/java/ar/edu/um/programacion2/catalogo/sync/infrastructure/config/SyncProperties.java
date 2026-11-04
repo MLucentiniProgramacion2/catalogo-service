@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -30,6 +31,10 @@ public class SyncProperties {
     @NotNull
     private Retry retry = new Retry();
 
+    @Valid
+    @NotNull
+    private Lock lock = new Lock();
+
     @Getter
     @Setter
     public static class Startup {
@@ -50,5 +55,23 @@ public class SyncProperties {
         private List<@NotNull Duration> delays = new ArrayList<>(
             List.of(Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(4))
         );
+    }
+
+    @Getter
+    @Setter
+    public static class Lock {
+
+        /**
+         * Cuánto espera un disparador a que termine otra sincronización (DP-09). Si se supera, termina sin cambios y
+         * registra {@code LOCK_TIMEOUT}.
+         * <p>
+         * Tiene que cubrir el peor caso de CU-02: 4 intentos de 65 s (5 s de conexión y 30 s de respuesta de la cátedra,
+         * más 30 s de espera de una conexión de Hikari), 7 s entre reintentos y otros 30 s para registrar el error dan
+         * 297 s. Con 5 min sobrarían 3 s sin contar el reemplazo mismo; por eso 6 min. Si se suben esos timeouts, hay que
+         * recalcularlo.
+         */
+        @NotNull
+        @DurationMin(millis = 1)
+        private Duration waitTimeout = Duration.ofMinutes(6);
     }
 }

@@ -236,6 +236,10 @@ sync:
     # DP-08: esperas antes de cada reintento de una sincronización. La cantidad de reintentos es la
     # cantidad de esperas: con 1s,2s,4s se intenta hasta 4 veces.
     delays: ${SYNC_RETRY_DELAYS:1s,2s,4s}
+  lock:
+    # DP-09: cuánto espera un disparador a que termine otra sincronización. Si se supera, termina sin
+    # cambios y registra LOCK_TIMEOUT. El valor cubre el peor caso de CU-02 (ver SyncProperties).
+    wait-timeout: ${SYNC_LOCK_WAIT_TIMEOUT:6m}
 
 # jhipster-needle-add-application-yaml-document
 ---

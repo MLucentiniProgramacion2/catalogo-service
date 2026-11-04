@@ -18,12 +18,12 @@ import ar.edu.um.programacion2.catalogo.catalog.domain.model.WeeklySchedule;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.CatalogRepository;
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.adapter.JpaCatalogRepositoryAdapter;
 import ar.edu.um.programacion2.catalogo.sync.SyncTestDatabase;
-import ar.edu.um.programacion2.catalogo.sync.application.service.SyncService;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.FullSyncResult;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncErrorType;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncPath;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncStatus;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncTrigger;
+import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.ExecuteFullSyncUseCase;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SyncStatusRepository;
 import ar.edu.um.programacion2.catalogo.sync.infrastructure.client.FakeCatedraServer;
 import ar.edu.um.programacion2.catalogo.sync.infrastructure.startup.EmptyDatabaseBeforeStartup;
@@ -71,7 +71,7 @@ class FullSyncIT {
     private ApplicationContext context;
 
     @Autowired
-    private SyncService syncService;
+    private ExecuteFullSyncUseCase executeFullSyncUseCase;
 
     @Autowired
     private SyncStatusRepository syncStatusRepository;
@@ -107,7 +107,7 @@ class FullSyncIT {
         CATEDRA.respondJson(200, snapshot(7, List.of(category(1), category(2)), List.of(professional(15, 1)), List.of(schedule(21, 15))));
         int pedidosAntes = CATEDRA.requests().size();
 
-        FullSyncResult resultado = syncService.executeFullSync(SyncTrigger.MANUAL);
+        FullSyncResult resultado = executeFullSyncUseCase.executeFullSync(SyncTrigger.MANUAL);
 
         assertThat(resultado).isEqualTo(new FullSyncResult.Applied(7, 1));
         assertThat(SyncTestDatabase.categoryIds(transactionTemplate, em)).containsExactly(1L, 2L);
@@ -129,7 +129,7 @@ class FullSyncIT {
         CATEDRA.respondProblem(503, "SERVICE_UNAVAILABLE");
         int pedidosAntes = CATEDRA.requests().size();
 
-        FullSyncResult resultado = syncService.executeFullSync(SyncTrigger.MANUAL);
+        FullSyncResult resultado = executeFullSyncUseCase.executeFullSync(SyncTrigger.MANUAL);
 
         assertThat(resultado).isInstanceOf(FullSyncResult.Failed.class);
         assertThat(((FullSyncResult.Failed) resultado).errorType()).isEqualTo(SyncErrorType.CATEDRA_UNAVAILABLE);
@@ -149,7 +149,7 @@ class FullSyncIT {
         CATEDRA.respondJson(200, snapshot(7, List.of(category(2)), List.of(professional(16, 999)), List.of()));
         int pedidosAntes = CATEDRA.requests().size();
 
-        FullSyncResult resultado = syncService.executeFullSync(SyncTrigger.MANUAL);
+        FullSyncResult resultado = executeFullSyncUseCase.executeFullSync(SyncTrigger.MANUAL);
 
         assertThat(((FullSyncResult.Failed) resultado).errorType()).isEqualTo(SyncErrorType.SNAPSHOT_FAILED);
         assertThat(CATEDRA.requests().size() - pedidosAntes).isEqualTo(1);
@@ -165,7 +165,7 @@ class FullSyncIT {
         CATEDRA.respondJson(200, snapshot(7, List.of(category(1), category(2)), List.of(), List.of()));
         cuttingRepository.cutNextCalls(1);
 
-        FullSyncResult resultado = syncService.executeFullSync(SyncTrigger.MANUAL);
+        FullSyncResult resultado = executeFullSyncUseCase.executeFullSync(SyncTrigger.MANUAL);
 
         assertThat(resultado).isEqualTo(new FullSyncResult.Applied(7, 2));
         assertThat(cuttingRepository.cuts()).isEqualTo(1);
@@ -179,7 +179,7 @@ class FullSyncIT {
         CATEDRA.respondJson(200, snapshot(7, List.of(category(1), category(2)), List.of(), List.of()));
         cuttingRepository.cutNextCalls(4);
 
-        FullSyncResult resultado = syncService.executeFullSync(SyncTrigger.MANUAL);
+        FullSyncResult resultado = executeFullSyncUseCase.executeFullSync(SyncTrigger.MANUAL);
 
         assertThat(resultado).isInstanceOf(FullSyncResult.Failed.class);
         assertThat(((FullSyncResult.Failed) resultado).attempts()).isEqualTo(4);
@@ -189,9 +189,7 @@ class FullSyncIT {
         assertThat(estado.getLocalVersion()).isEqualTo(5L);
         // El error se registra en una transacción nueva, con otra conexión: la cortada ya no existe.
         assertThat(estado.getLastErrorType()).isEqualTo(SyncErrorType.DATABASE_UNAVAILABLE);
-        assertThat(estado.getLastErrorDescription()).startsWith(
-            "La base de datos local no respondió al aplicar el snapshot después de 4 intentos: "
-        );
+        assertThat(estado.getLastErrorDescription()).isEqualTo("La base de datos local no respondió al aplicar el snapshot después de 4 intentos");
     }
 
     @Test
@@ -206,7 +204,7 @@ class FullSyncIT {
         CATEDRA.respondJson(200, snapshot(7, List.of(category(1)), List.of(), List.of()));
         int pedidosAntes = CATEDRA.requests().size();
 
-        assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(tx -> syncService.executeFullSync(SyncTrigger.MANUAL)))
+        assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(tx -> executeFullSyncUseCase.executeFullSync(SyncTrigger.MANUAL)))
             .isInstanceOf(IllegalTransactionStateException.class);
 
         assertThat(CATEDRA.requests().size() - pedidosAntes).isZero();
@@ -215,7 +213,7 @@ class FullSyncIT {
 
     private void aplicarCopiaBuena() {
         CATEDRA.respondJson(200, snapshot(5, List.of(category(1)), List.of(), List.of()));
-        assertThat(syncService.executeFullSync(SyncTrigger.STARTUP)).isEqualTo(new FullSyncResult.Applied(5, 1));
+        assertThat(executeFullSyncUseCase.executeFullSync(SyncTrigger.STARTUP)).isEqualTo(new FullSyncResult.Applied(5, 1));
     }
 
     private SyncStatus estado() {

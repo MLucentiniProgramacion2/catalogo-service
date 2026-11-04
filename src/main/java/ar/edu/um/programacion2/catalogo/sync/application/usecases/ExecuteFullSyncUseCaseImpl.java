@@ -41,10 +41,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  * reintenta entero, por fuera de la transacción, con las esperas de {@link RetryBackoff} (DP-08). Reintentar adentro no
  * serviría: una transacción en la que falló algo queda marcada para deshacerse.
  * <p>
- * Si falla del todo, el error se registra en una transacción <strong>nueva</strong>, después del rollback de la anterior
- * (explicación del #21, sección 7). La descripción se informa a los usuarios (CU-09): se arma con el mensaje de las
- * excepciones del puerto, que por contrato no llevan credenciales, o solo con el nombre de la excepción de la base, cuyo
- * mensaje puede traer SQL. Nunca con la causa ni con el stack.
+ * Si falla del todo, el error se registra con {@link SyncErrorRecorder}, en una transacción <strong>nueva</strong>,
+ * después del rollback de la anterior (explicación del #21, sección 7). La descripción se informa a los usuarios (CU-08, CU-09): se arma con el mensaje de
+ * las excepciones del puerto, que por contrato no llevan credenciales, hosts ni nombres de clases, o con un texto fijo
+ * cuando falla la base, cuyas excepciones pueden traer SQL. Nunca con la causa ni con el stack, que van solo al log.
  * <p>
  * Las transacciones son programáticas ({@link TransactionTemplate}) porque un mismo método necesita una parte sin
  * transacción, una transacción que se repite y otra distinta para el error. Con {@code @Transactional} en métodos de
@@ -70,6 +70,7 @@ public class ExecuteFullSyncUseCaseImpl implements ExecuteFullSyncUseCase {
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
     private final RetryBackoff retryBackoff;
+    private final SyncErrorRecorder syncErrorRecorder;
 
     @Override
     public FullSyncResult executeFullSync(SyncTrigger trigger) {
@@ -168,18 +169,17 @@ public class ExecuteFullSyncUseCaseImpl implements ExecuteFullSyncUseCase {
                 );
             };
         }
-        String exceptionName = failure.getClass().getSimpleName();
         if (DatabaseFailures.isTransient(failure)) {
             return Failure.retryable(
                 SyncErrorType.DATABASE_UNAVAILABLE,
                 "La base de datos local no respondió al aplicar el snapshot",
-                exceptionName
+                null
             ).withStackTrace(failure);
         }
         if (failure instanceof DataAccessException || failure instanceof TransactionException) {
-            return Failure.definitive(SyncErrorType.SNAPSHOT_FAILED, "La base de datos local rechazó el snapshot", exceptionName, failure);
+            return Failure.definitive(SyncErrorType.SNAPSHOT_FAILED, "La base de datos local rechazó el snapshot", null, failure);
         }
-        return Failure.definitive(SyncErrorType.SNAPSHOT_FAILED, "Error inesperado al aplicar el snapshot", exceptionName, failure);
+        return Failure.definitive(SyncErrorType.SNAPSHOT_FAILED, "Error inesperado al aplicar el snapshot", null, failure);
     }
 
     private static String describeBrokenReferences(CatalogSnapshot snapshot, List<String> brokenReferences) {
@@ -196,30 +196,13 @@ public class ExecuteFullSyncUseCaseImpl implements ExecuteFullSyncUseCase {
         } else {
             LOG.error("Sincronización completa ({}) fallida: {} [{}]", trigger, description, type, cause);
         }
-        recordError(type, description);
+        syncErrorRecorder.record(type, description);
         return new FullSyncResult.Failed(type, description, attempts);
     }
 
     /**
-     * En una transacción nueva: la de aplicar ya terminó, con rollback si falló. Registrar el error adentro de ella no
-     * serviría: quedó marcada rollback-only y PostgreSQL rechaza toda sentencia después de un error. Si registrar
-     * también falla (la base sigue caída), queda solo en el log: el resultado igual se devuelve.
-     */
-    private void recordError(SyncErrorType type, String description) {
-        try {
-            transactionTemplate.executeWithoutResult(tx -> {
-                SyncStatus status = syncStatusRepository.load();
-                status.recordError(type, description, clock.instant());
-                syncStatusRepository.save(status);
-            });
-        } catch (RuntimeException e) {
-            LOG.error("No se pudo registrar el error de sincronización {} en el estado", type, e);
-        }
-    }
-
-    /**
-     * Una falla ya clasificada. {@code summary} y {@code detail} se informan a los usuarios; {@code stackTrace} solo va
-     * al log, y nunca es una excepción del puerto (su causa lleva la URL de la cátedra).
+     * Una falla ya clasificada. {@code summary} y {@code detail} (opcional) se informan a los usuarios; {@code stackTrace}
+     * solo va al log, y nunca es una excepción del puerto (su causa lleva la URL de la cátedra).
      */
     private record Failure(SyncErrorType type, String summary, String detail, boolean retryable, RuntimeException stackTrace) {
         static Failure retryable(SyncErrorType type, String summary, String detail) {
@@ -240,10 +223,8 @@ public class ExecuteFullSyncUseCaseImpl implements ExecuteFullSyncUseCase {
         }
 
         String finalDescription(int attempts) {
-            if (!retryable) {
-                return summary + ": " + detail;
-            }
-            return summary + " después de " + attempts + (attempts == 1 ? " intento: " : " intentos: ") + detail;
+            String text = retryable ? summary + " después de " + attempts + (attempts == 1 ? " intento" : " intentos") : summary;
+            return detail != null ? text + ": " + detail : text;
         }
     }
 }

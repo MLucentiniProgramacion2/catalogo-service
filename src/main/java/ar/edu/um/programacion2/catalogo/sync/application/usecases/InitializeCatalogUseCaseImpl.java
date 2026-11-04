@@ -16,6 +16,10 @@ import org.springframework.stereotype.Component;
  * CU-01 incluye a CU-02, así que depende de su puerto de entrada, no de su implementación. El resultado de CU-02 (bueno
  * o malo) ya queda registrado en el estado de sincronización y en el log; acá no hay nada más que hacer con él.
  * <p>
+ * Corre con la exclusión mutua tomada (DP-09), y el estado se lee <strong>adentro</strong>: si se leyera antes y hubiera
+ * que esperar, una sincronización manual podría aplicar el snapshot mientras tanto y este lo repetiría sin necesidad. Si
+ * vence la espera, {@link ExclusiveSync} lo registra y el arranque termina sin cambios.
+ * <p>
  * <strong>No puede ser {@code @Transactional}</strong>: CU-02 tiene {@code Propagation.NEVER} y fallaría sin pedir el
  * snapshot, porque el pedido a la cátedra no puede quedar dentro de una transacción. La lectura del estado tiene su
  * propia transacción de solo lectura, en {@link GetSyncStatusUseCaseImpl}, que termina antes de llamar a CU-02.
@@ -28,9 +32,17 @@ public class InitializeCatalogUseCaseImpl implements InitializeCatalogUseCase {
 
     private final GetSyncStatusUseCase getSyncStatusUseCase;
     private final ExecuteFullSyncUseCase executeFullSyncUseCase;
+    private final ExclusiveSync exclusiveSync;
 
     @Override
     public void initializeCatalog() {
+        exclusiveSync.run(SyncTrigger.STARTUP, () -> {
+            initializeWithExclusion();
+            return true;
+        });
+    }
+
+    private void initializeWithExclusion() {
         SyncStatus status = getSyncStatusUseCase.getSyncStatus();
         if (!status.hasLocalCopy()) {
             LOG.info("Arranque: no hay versión local del catálogo; se sincroniza con un snapshot (CU-02)");

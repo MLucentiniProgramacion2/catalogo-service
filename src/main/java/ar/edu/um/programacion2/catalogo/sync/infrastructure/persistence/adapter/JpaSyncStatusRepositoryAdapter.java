@@ -24,6 +24,15 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>
  * La fila la crea Liquibase ({@code sync/001-sync-status.xml}). {@code save} la busca antes de guardar: un
  * {@code merge} sobre una fila inexistente la insertaría, y el código nunca decide crearla.
+ * <p>
+ * <strong>Escrituras concurrentes.</strong> {@code SyncStatusEntity} tiene {@code @DynamicUpdate}: el {@code merge} copia
+ * el modelo sobre la entidad gestionada, y al hacer flush Hibernate escribe solo las columnas que difieren del valor
+ * leído en esta transacción. Dos escrituras que tocan columnas distintas (el snapshot y el {@code LOCK_TIMEOUT}) no se
+ * pisan, <strong>siempre que {@code load} y {@code save} del mismo cambio ocurran en la misma transacción</strong>: así
+ * el modelo y la entidad gestionada salen de la misma lectura, y lo único que difiere es lo que el caso de uso cambió.
+ * Si se leyera en una transacción y se guardara en otra, {@code save} volvería a leer la fila y cualquier dato viejo del
+ * modelo contaría como un cambio: la versión volvería a retroceder. Por lo mismo, no hay que reemplazar este
+ * {@code merge} por una escritura que no compare contra la fila leída.
  */
 @Repository
 @Transactional(propagation = Propagation.MANDATORY)
