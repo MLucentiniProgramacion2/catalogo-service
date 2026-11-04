@@ -48,8 +48,8 @@ La app o el administrador consultan el estado de sincronización.
 
 ## Decisiones del proyecto
 
-- **DP-05 (permisos de operación):** cualquier usuario autenticado puede consultar el estado (la
-  app puede mostrar, por ejemplo, "catálogo actualizado a la versión X" o un aviso de error). La
+- **DP-05 (permisos de operación):** `ROLE_USER` y `ROLE_ADMIN` pueden consultar el estado (la app
+  puede mostrar, por ejemplo, "catálogo actualizado a la versión X" o un aviso de error). La
   respuesta nunca incluye hosts, credenciales, el JWT técnico ni stack traces.
 - **DP-02:** la app consulta este estado directamente al catálogo, con el JWT de usuario.
 - **Persistencia del estado (issue #13):** se guarda en una sola fila de `sync_status`, creada por
@@ -57,6 +57,53 @@ La app o el administrador consultan el estado de sincronización.
   sale de la exclusión mutua en memoria (DP-09). Si se guardara y el servicio se cayera a mitad de un
   snapshot, quedaría marcada "en curso" para siempre; además, escrita dentro de la transacción del
   snapshot, nadie la vería hasta el commit. Supone una sola instancia del servicio.
+
+## Contrato del endpoint (issue #29)
+
+```http
+GET /api/sync/status
+Authorization: Bearer <jwt-de-usuario>
+```
+
+No tiene parámetros. Respuesta `200 OK`:
+
+```json
+{
+  "localVersion": 12,
+  "inProgress": false,
+  "lastSuccess": { "at": "2026-11-04T12:00:00Z", "path": "SNAPSHOT", "trigger": "MANUAL" },
+  "remote": { "version": 14, "checkedAt": "2026-11-04T12:30:00Z" },
+  "lastError": { "at": "2026-11-04T13:00:00Z", "type": "LOCK_TIMEOUT", "description": "La sincronización (MANUAL) no se ejecutó: otra seguía en curso al vencer la espera máxima" }
+}
+```
+
+Con la base sin datos y sin ningún intento (3a):
+
+```json
+{ "localVersion": null, "inProgress": false, "lastSuccess": null, "remote": null, "lastError": null }
+```
+
+| Campo | Regla |
+| --- | --- |
+| `localVersion` | Versión aplicada. `null` significa "sin datos": nunca se confirmó un snapshot. |
+| `inProgress` | Si hay una sincronización corriendo ahora. Sale de la exclusión mutua en memoria; no mira si hay alguna esperando. |
+| `lastSuccess` | Última sincronización exitosa: `path` es `SNAPSHOT` o `INCREMENTAL`, y `trigger` es `KAFKA`, `STARTUP`, `PERIODIC` o `MANUAL`. |
+| `remote` | Última versión publicada conocida y cuándo se leyó. No se consulta Redis en cada pedido; queda en `null` hasta CU-03. |
+| `lastError` | Último error, aunque después haya habido un éxito: `lastSuccess` y `lastError` traen su fecha para compararlas. `type` es un valor de `SyncErrorType`. |
+
+Cada grupo es `null` entero si no hay datos, nunca a medias. La lectura es una sola fila en una
+transacción de solo lectura; "en curso" se mira antes, así que el peor desfase es informar `inProgress`
+con la versión ya nueva.
+
+| Caso | Status | Cuerpo |
+| --- | --- | --- |
+| Sin token, firma inválida o vencido (2a) | `401` | vacío (Spring Security) |
+| Token de servicio o sin `ROLE_USER`/`ROLE_ADMIN` (2b) | `403` | vacío (Spring Security) |
+| Sin datos (3a) | `200` | `localVersion: null` y, si existe, el error del intento inicial |
+
+**Nunca responde `503`:** a diferencia de CU-05 y CU-06, con la base vacía responde `200`, porque es
+la consulta que explica por qué las demás dan `503`. La respuesta no lleva hosts, URL de la cátedra,
+tokens, stack traces ni nombres de clases.
 
 ## Respaldo en las consignas
 

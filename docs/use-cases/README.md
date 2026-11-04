@@ -106,11 +106,11 @@ flowchart LR
 | DP-02 | La app KMP consulta al catálogo directamente con el JWT de usuario emitido por turnos. | CU-05, CU-06, CU-09 |
 | DP-03 | Durante una reconstrucción se sirve la última copia confirmada y se informa la versión local; con la base vacía, `503`. | CU-01, CU-02, CU-05, CU-06, CU-07 |
 | DP-04 | Comprobación periódica de versión contra Redis cada N minutos (variable de entorno) como disparador adicional de CU-03, con la misma lógica e idempotencia. | CU-01, CU-03 |
-| DP-05 | Estado de sincronización: cualquier usuario autenticado. Sincronización manual: solo `ROLE_ADMIN`. | CU-08, CU-09 |
+| DP-05 | Estado de sincronización: `ROLE_USER` o `ROLE_ADMIN`. Sincronización manual: solo `ROLE_ADMIN`. | CU-08, CU-09 |
 | DP-06 | Turnos usa un JWT técnico de servicio con `aud=catalogo-service`, `iss=turnos-service` y `ROLE_SERVICE` (DPT-16 de turnos); el endpoint de agenda exige los tres como regla de autorización, no de la validación general del token, y si falta uno responde `403`; `X-User-Login` solo para trazabilidad; los endpoints de usuario rechazan el token técnico. | CU-05 a CU-09 |
 | DP-07 | `eventId` procesados en una tabla de PostgreSQL (`processed_event`: `eventId`, `newVersion` del evento y fecha de procesamiento), en la misma transacción que los cambios; la comparación de versiones es una segunda barrera. | CU-03, CU-04 |
 | DP-08 | Timeouts configurables, hasta 3 reintentos con backoff de 1 s, 2 s y 4 s; si se agotan, rollback de la versión en curso, se conservan las versiones completas, el `eventId` no se registra, se registra el error y se commitea el offset. | CU-02, CU-03, CU-04 |
-| DP-09 | Una sola incorporación de cambios a la vez; los demás disparadores esperan hasta un máximo configurable y, si se supera, terminan sin cambios y lo registran. | CU-01, CU-03, CU-04, CU-08 |
+| DP-09 | Una sola incorporación de cambios a la vez; los demás disparadores esperan hasta un máximo configurable (`sync.lock.wait-timeout`, 6 min por defecto) y, si se supera, terminan sin cambios y lo registran como `LOCK_TIMEOUT`. | CU-01, CU-03, CU-04, CU-08 |
 | DP-10 | La sincronización manual corre la lógica de CU-03 por defecto y puede forzar un snapshot con un parámetro explícito. | CU-08 |
 
 ## Mejoras futuras

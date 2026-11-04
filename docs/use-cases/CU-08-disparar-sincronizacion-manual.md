@@ -56,12 +56,81 @@ El administrador pide una sincronización manual.
 
 - **DP-05 (permisos de operación):** la sincronización manual requiere `ROLE_ADMIN`. Depende de que
   turnos incluya el rol en el JWT que emite. El estado de sincronización (CU-09), en cambio, lo
-  puede consultar cualquier usuario autenticado.
+  pueden consultar `ROLE_USER` y `ROLE_ADMIN`.
 - **DP-10 (modos de la sincronización manual):** por defecto es un disparador más de CU-03 (misma
   lógica e idempotencia). Con un parámetro explícito fuerza un snapshot (CU-02), útil para mostrar
   la reconstrucción en la demo. Los dos modos respetan la exclusión mutua (DP-09).
+- **Modo normal pendiente (issue #29):** CU-03 todavía no existe. Hasta que el issue de CU-03 lo
+  conecte, el modo normal responde `501` y **un `POST` sin `mode` también**, porque es el modo por
+  defecto. Hoy la sincronización manual se dispara con `mode=SNAPSHOT`.
 - Ya estaba decidido que la sincronización es **automática** al recibir `CatalogUpdated`: la manual
   se suma, no la reemplaza.
+
+## Contrato del endpoint (issue #29)
+
+```http
+POST /api/admin/sync?mode={NORMAL|SNAPSHOT}
+Authorization: Bearer <jwt-de-usuario-con-ROLE_ADMIN>
+```
+
+| Parámetro | Tipo | Regla |
+| --- | --- | --- |
+| `mode` | `NORMAL` / `SNAPSHOT` | Opcional. Si se omite o va vacío, `NORMAL` (DP-10). Solo esos valores, en mayúsculas, como `day` en CU-05: `snapshot` da `400`. |
+
+El pedido no tiene cuerpo y es **sincrónico**: vuelve cuando la sincronización terminó, como pide el
+paso 4. Puede tardar minutos: en el peor caso, unos 11 (hasta 6 de espera y unos 5 de ejecución). Si
+el cliente corta la conexión, la sincronización sigue y el resultado queda en CU-09.
+
+Respuesta `200 OK`:
+
+```json
+{ "mode": "SNAPSHOT", "localVersionBefore": 3, "localVersionAfter": 5, "path": "SNAPSHOT", "attempts": 1 }
+```
+
+`localVersionBefore` es `null` si la base no tenía versión. `attempts` cuenta los intentos, con el
+primero incluido (DP-08). Por ahora `path` es siempre `SNAPSHOT`: `INCREMENTAL` y "sin cambios"
+llegan con CU-03.
+
+| Caso | Status | Cuerpo |
+| --- | --- | --- |
+| Sin token, firma inválida o vencido (2a) | `401` | vacío (Spring Security) |
+| Sin `ROLE_ADMIN`, o token técnico de servicio (2b) | `403` | vacío (Spring Security) |
+| Modo desconocido o en minúsculas (2c) | `400` | `problem+json`, `message: error.http.400`, `detail: Failed to convert 'mode'`, sin `code`, como CU-06 |
+| Se superó la espera de la exclusión mutua (3a) | `409` | `problem+json`, `code: SYNC_IN_PROGRESS` |
+| `mode=NORMAL` o sin `mode`, hasta CU-03 | `501` | `problem+json`, `code: SYNC_MODE_NOT_AVAILABLE` |
+| La sincronización falló (3b) | `502` | `problem+json`, `code: SYNC_FAILED`, con `errorType`, versiones e intentos |
+
+Ejemplo de `502`:
+
+```json
+{
+  "type": "https://www.jhipster.tech/problem/problem-with-message",
+  "title": "Bad Gateway",
+  "status": 502,
+  "detail": "La cátedra no estuvo disponible después de 4 intentos: La cátedra no respondió al pedir el snapshot",
+  "message": "error.http.502",
+  "path": "/api/admin/sync",
+  "code": "SYNC_FAILED",
+  "errorType": "CATEDRA_UNAVAILABLE",
+  "localVersionBefore": 3,
+  "localVersionAfter": 3,
+  "attempts": 4
+}
+```
+
+- **`502` y no `200`:** el pedido era válido, pero lo pedido no ocurrió. Con un `200`, un cliente que
+  mira solo el status vería éxito. Es un solo status por `code`: si la que falló es la base local,
+  `errorType` es `DATABASE_UNAVAILABLE`, y si ni siquiera se pudo leer la versión, las dos versiones
+  van en `null` y `attempts` en `0`.
+- **`errorType`** toma los valores de `SyncErrorType`: `CATEDRA_UNAVAILABLE`, `INVALID_CREDENTIALS`,
+  `SNAPSHOT_FAILED` o `DATABASE_UNAVAILABLE`.
+- **`409`:** queda registrado como `LOCK_TIMEOUT` en CU-09. Se puede volver a pedir cuando termine la
+  que está corriendo; va sin `Retry-After` porque su duración no se conoce.
+- **`501`:** responde enseguida, sin tomar la exclusión y sin registrar un error, porque no falló
+  ninguna sincronización.
+
+Como en el contrato de la cátedra (§13), la app decide por `status` y `code`, nunca por `detail`. Las
+respuestas no llevan hosts, URL de la cátedra, tokens, stack traces ni nombres de clases.
 
 ## Respaldo en las consignas
 
