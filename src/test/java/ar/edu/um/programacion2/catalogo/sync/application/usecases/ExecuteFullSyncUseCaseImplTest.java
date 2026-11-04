@@ -305,23 +305,23 @@ class ExecuteFullSyncUseCaseImplTest {
         return Stream.of(
             Arguments.of(
                 new DataIntegrityViolationException("violates foreign key constraint"),
-                "La base de datos local rechazó el snapshot: DataIntegrityViolationException"
+                "La base de datos local rechazó el snapshot"
             ),
             Arguments.of(
                 new InvalidDataAccessApiUsageException("No existe la fila 1 de sync_status"),
-                "La base de datos local rechazó el snapshot: InvalidDataAccessApiUsageException"
+                "La base de datos local rechazó el snapshot"
             ),
             Arguments.of(
                 new InvalidDataAccessResourceUsageException("relation does not exist"),
-                "La base de datos local rechazó el snapshot: InvalidDataAccessResourceUsageException"
+                "La base de datos local rechazó el snapshot"
             ),
             Arguments.of(
                 new IllegalTransactionStateException("No existing transaction found"),
-                "La base de datos local rechazó el snapshot: IllegalTransactionStateException"
+                "La base de datos local rechazó el snapshot"
             ),
             Arguments.of(
                 new IllegalStateException("un error de programación"),
-                "Error inesperado al aplicar el snapshot: IllegalStateException"
+                "Error inesperado al aplicar el snapshot"
             )
         );
     }
@@ -352,8 +352,7 @@ class ExecuteFullSyncUseCaseImplTest {
 
         FullSyncResult resultado = useCase.executeFullSync(SyncTrigger.STARTUP);
 
-        String descripcion =
-            "La base de datos local no respondió al aplicar el snapshot después de 4 intentos: DataAccessResourceFailureException";
+        String descripcion = "La base de datos local no respondió al aplicar el snapshot después de 4 intentos";
         assertThat(resultado).isEqualTo(new FullSyncResult.Failed(SyncErrorType.DATABASE_UNAVAILABLE, descripcion, 4));
         assertThat(esperas).containsExactly(Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(4));
         assertThat(estadoGuardado().getLastErrorType()).isEqualTo(SyncErrorType.DATABASE_UNAVAILABLE);
@@ -386,7 +385,7 @@ class ExecuteFullSyncUseCaseImplTest {
         RuntimeException causa = new RuntimeException("GET http://catedra/api/synchronization/snapshot Authorization: Bearer " + TOKEN);
         return Stream.of(
             new SnapshotAccessDeniedException("La cátedra respondió 401 (sin code) al pedir el snapshot", causa),
-            new SnapshotSourceUnavailableException("La cátedra no respondió al pedir el snapshot (HttpTimeoutException)", causa),
+            new SnapshotSourceUnavailableException("La cátedra no respondió al pedir el snapshot", causa),
             new InvalidSnapshotException("Snapshot inválido: el cuerpo no es el JSON esperado", causa)
         );
     }

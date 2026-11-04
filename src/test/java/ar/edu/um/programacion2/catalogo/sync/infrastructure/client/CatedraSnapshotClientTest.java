@@ -170,7 +170,10 @@ class CatedraSnapshotClientTest {
         URI apagado = catedra.baseUrl();
         catedra.close();
 
-        assertThat(fetchExpecting(client(apagado), SnapshotSourceUnavailableException.class)).hasMessageContaining("no respondió");
+        // Sin el tipo de la causa: el mensaje llega a los usuarios por CU-08 y CU-09, y el tipo va solo al log.
+        assertThat(fetchExpecting(client(apagado), SnapshotSourceUnavailableException.class))
+            .hasMessageContaining("no respondió")
+            .hasMessageNotContaining("Exception");
     }
 
     @Test
@@ -224,7 +227,10 @@ class CatedraSnapshotClientTest {
     void unCuerpoQueNoRespetaElContratoEsInvalido(String caso, String body, String expectedInMessage) {
         catedra.respondJson(200, body);
 
-        assertThat(fetchExpecting(InvalidSnapshotException.class)).hasMessageContaining(expectedInMessage);
+        assertThat(fetchExpecting(InvalidSnapshotException.class))
+            .hasMessageContaining(expectedInMessage)
+            .hasMessageNotContaining("java.")
+            .hasMessageNotContaining("Exception");
     }
 
     @ParameterizedTest

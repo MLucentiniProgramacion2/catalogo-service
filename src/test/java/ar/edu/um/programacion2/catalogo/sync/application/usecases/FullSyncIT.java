@@ -189,9 +189,7 @@ class FullSyncIT {
         assertThat(estado.getLocalVersion()).isEqualTo(5L);
         // El error se registra en una transacción nueva, con otra conexión: la cortada ya no existe.
         assertThat(estado.getLastErrorType()).isEqualTo(SyncErrorType.DATABASE_UNAVAILABLE);
-        assertThat(estado.getLastErrorDescription()).startsWith(
-            "La base de datos local no respondió al aplicar el snapshot después de 4 intentos: "
-        );
+        assertThat(estado.getLastErrorDescription()).isEqualTo("La base de datos local no respondió al aplicar el snapshot después de 4 intentos");
     }
 
     @Test

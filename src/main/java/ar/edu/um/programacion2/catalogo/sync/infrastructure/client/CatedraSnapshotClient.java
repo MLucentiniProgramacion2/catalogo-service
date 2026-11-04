@@ -52,13 +52,12 @@ public class CatedraSnapshotClient implements CatalogSnapshotProvider {
         try {
             body = catedraRestClient.get().uri(SNAPSHOT_PATH).exchange((request, response) -> readSnapshotBody(response));
         } catch (ResourceAccessException e) {
-            // La causa directa es la IOException del cliente (ConnectException, HttpTimeoutException...). El mensaje
-            // de ResourceAccessException no se copia porque lleva la URL.
+            // La causa directa es la IOException del cliente (ConnectException, HttpTimeoutException...). Su tipo va solo
+            // al log: el mensaje de la excepción se informa a los usuarios (CU-09). El de ResourceAccessException no se
+            // copia en ningún lado porque lleva la URL.
             Throwable cause = e.getCause() != null ? e.getCause() : e;
-            throw new SnapshotSourceUnavailableException(
-                "La cátedra no respondió al pedir el snapshot (" + cause.getClass().getSimpleName() + ")",
-                e
-            );
+            LOG.warn("La cátedra no respondió al pedir el snapshot ({})", cause.getClass().getSimpleName());
+            throw new SnapshotSourceUnavailableException("La cátedra no respondió al pedir el snapshot", e);
         }
         CatalogSnapshot snapshot = CatedraSnapshotMapper.toDomain(parse(body));
         LOG.debug(
@@ -108,7 +107,9 @@ public class CatedraSnapshotClient implements CatalogSnapshotProvider {
             }
             return response;
         } catch (JacksonException e) {
-            throw new InvalidSnapshotException("Snapshot inválido: el cuerpo no es el JSON esperado (" + e.getOriginalMessage() + ")", e);
+            // El detalle de Jackson va solo al log: nombra tipos de Java y el mensaje de la excepción llega a los usuarios.
+            LOG.warn("Snapshot inválido: {}", e.getOriginalMessage());
+            throw new InvalidSnapshotException("Snapshot inválido: el cuerpo no es el JSON esperado", e);
         }
     }
 }
