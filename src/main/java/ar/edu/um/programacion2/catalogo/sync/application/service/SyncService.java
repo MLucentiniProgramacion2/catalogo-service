@@ -2,8 +2,8 @@ package ar.edu.um.programacion2.catalogo.sync.application.service;
 
 import ar.edu.um.programacion2.catalogo.sync.domain.model.ManualSyncResult;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncMode;
-import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncStatus;
-import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.GetSyncStatusUseCase;
+import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncOverview;
+import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.GetSyncOverviewUseCase;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.InitializeCatalogUseCase;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.TriggerManualSyncUseCase;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 public class SyncService {
 
     private final InitializeCatalogUseCase initializeCatalogUseCase;
-    private final GetSyncStatusUseCase getSyncStatusUseCase;
+    private final GetSyncOverviewUseCase getSyncOverviewUseCase;
     private final TriggerManualSyncUseCase triggerManualSyncUseCase;
 
     public void initializeCatalog() {
@@ -31,7 +31,7 @@ public class SyncService {
         return triggerManualSyncUseCase.triggerManualSync(mode);
     }
 
-    public SyncStatus getSyncStatus() {
-        return getSyncStatusUseCase.getSyncStatus();
+    public SyncOverview getSyncOverview() {
+        return getSyncOverviewUseCase.getSyncOverview();
     }
 }
