@@ -9,6 +9,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.Professional;
@@ -16,17 +17,24 @@ import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalCategor
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.WeeklySchedule;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.CatalogRepository;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.CatalogSnapshot;
+import ar.edu.um.programacion2.catalogo.sync.domain.model.CatalogUpdateNotice;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.FullSyncResult;
+import ar.edu.um.programacion2.catalogo.sync.domain.model.ProcessedEvent;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncErrorType;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncPath;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncStatus;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncTrigger;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.CatalogSnapshotProvider;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.InvalidSnapshotException;
+import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.ProcessedEventRepository;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SnapshotAccessDeniedException;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SnapshotRetrievalException;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SnapshotSourceUnavailableException;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SyncStatusRepository;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.Duration;
@@ -47,6 +55,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -76,6 +85,7 @@ class ExecuteFullSyncUseCaseImplTest {
     private static final Instant AHORA = Instant.parse("2026-10-30T15:00:00Z");
     private static final Instant CREADO = Instant.parse("2026-07-01T12:00:00Z");
     private static final String TOKEN = "token-secreto-de-prueba";
+    private static final CatalogUpdateNotice AVISO_V7 = new CatalogUpdateNotice("8b097be5-7ba5-4618-97e8-c502d3f46723", 7);
     private static final List<Duration> DP_08 = List.of(Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(4));
 
     @Mock
@@ -86,6 +96,9 @@ class ExecuteFullSyncUseCaseImplTest {
 
     @Mock
     private SyncStatusRepository syncStatusRepository;
+
+    @Mock
+    private ProcessedEventRepository processedEventRepository;
 
     @Mock
     private PlatformTransactionManager txManager;
@@ -132,6 +145,97 @@ class ExecuteFullSyncUseCaseImplTest {
         assertThat(guardado.getLastSuccessAt()).isEqualTo(AHORA);
         assertThat(guardado.getLastErrorType()).isNull();
         assertThat(esperas).isEmpty();
+    }
+
+    @Test
+    void sinAvisoNoRegistraNingunEvento() {
+        when(provider.fetchSnapshot()).thenReturn(snapshot(7));
+
+        useCase.executeFullSync(SyncTrigger.MANUAL);
+
+        verifyNoInteractions(processedEventRepository);
+    }
+
+    @Test
+    void conAvisoRegistraElEventoEnLaMismaTransaccionDespuesDeLosDatos() {
+        when(provider.fetchSnapshot()).thenReturn(snapshot(7));
+
+        FullSyncResult resultado = useCase.executeFullSync(SyncTrigger.KAFKA, AVISO_V7);
+
+        assertThat(resultado).isEqualTo(new FullSyncResult.Applied(7, 1));
+        InOrder orden = inOrder(txManager, catalogRepository, syncStatusRepository, processedEventRepository);
+        orden.verify(txManager).getTransaction(any());
+        orden.verify(catalogRepository).replaceAll(any(), any(), any());
+        orden.verify(syncStatusRepository).save(any());
+        orden.verify(processedEventRepository).registerIfAbsent(new ProcessedEvent(AVISO_V7.eventId(), 7, AHORA));
+        orden.verify(txManager).commit(any());
+        verify(txManager, times(1)).getTransaction(any());
+        assertThat(estadoGuardado().getLastSuccessTrigger()).isEqualTo(SyncTrigger.KAFKA);
+    }
+
+    @Test
+    void siFallaLaFuenteDelSnapshotElEventoNoSeRegistra() {
+        when(provider.fetchSnapshot()).thenThrow(new SnapshotAccessDeniedException("La cátedra respondió 401"));
+
+        FullSyncResult resultado = useCase.executeFullSync(SyncTrigger.KAFKA, AVISO_V7);
+
+        assertThat(resultado).isInstanceOf(FullSyncResult.Failed.class);
+        verifyNoInteractions(processedEventRepository);
+    }
+
+    @Test
+    void siFallaRegistrarElEventoSeDeshaceLaTransaccionYSeReintentaComoCualquierFallaDeLaBase() {
+        when(provider.fetchSnapshot()).thenReturn(snapshot(7));
+        doThrow(new DataAccessResourceFailureException("sin conexión"))
+            .doNothing()
+            .when(processedEventRepository)
+            .registerIfAbsent(any());
+
+        FullSyncResult resultado = useCase.executeFullSync(SyncTrigger.KAFKA, AVISO_V7);
+
+        assertThat(resultado).isEqualTo(new FullSyncResult.Applied(7, 2));
+        verify(txManager, times(1)).rollback(any());
+        verify(txManager, times(1)).commit(any());
+    }
+
+    @Test
+    void unSnapshotAnteriorAlAvisoRegistraElEventoIgualYLoAdvierte() {
+        Logger logger = (Logger) LoggerFactory.getLogger(ExecuteFullSyncUseCaseImpl.class);
+        ListAppender<ILoggingEvent> logs = new ListAppender<>();
+        logs.start();
+        logger.addAppender(logs);
+        when(provider.fetchSnapshot()).thenReturn(snapshot(7));
+        CatalogUpdateNotice aviso = new CatalogUpdateNotice(AVISO_V7.eventId(), 9);
+
+        try {
+            FullSyncResult resultado = useCase.executeFullSync(SyncTrigger.KAFKA, aviso);
+
+            assertThat(resultado).isEqualTo(new FullSyncResult.Applied(7, 1));
+            verify(processedEventRepository).registerIfAbsent(new ProcessedEvent(aviso.eventId(), 9, AHORA));
+            assertThat(logs.list)
+                .filteredOn(evento -> evento.getLevel() == Level.WARN)
+                .singleElement()
+                .satisfies(evento -> assertThat(evento.getFormattedMessage()).contains("snapshot 7").contains("versión 9"));
+        } finally {
+            logger.detachAppender(logs);
+        }
+    }
+
+    @Test
+    void unSnapshotAlDiaOPosteriorAlAvisoNoAdvierteNada() {
+        Logger logger = (Logger) LoggerFactory.getLogger(ExecuteFullSyncUseCaseImpl.class);
+        ListAppender<ILoggingEvent> logs = new ListAppender<>();
+        logs.start();
+        logger.addAppender(logs);
+        when(provider.fetchSnapshot()).thenReturn(snapshot(7));
+
+        try {
+            useCase.executeFullSync(SyncTrigger.KAFKA, AVISO_V7);
+
+            assertThat(logs.list).noneMatch(evento -> evento.getLevel() == Level.WARN);
+        } finally {
+            logger.detachAppender(logs);
+        }
     }
 
     @Test
@@ -469,6 +573,7 @@ class ExecuteFullSyncUseCaseImplTest {
             provider,
             catalogRepository,
             syncStatusRepository,
+            processedEventRepository,
             transactionTemplate,
             clock,
             new RetryBackoff(DP_08, sleeper),

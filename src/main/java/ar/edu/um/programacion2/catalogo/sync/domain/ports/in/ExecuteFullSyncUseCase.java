@@ -1,5 +1,6 @@
 package ar.edu.um.programacion2.catalogo.sync.domain.ports.in;
 
+import ar.edu.um.programacion2.catalogo.sync.domain.model.CatalogUpdateNotice;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.FullSyncResult;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncTrigger;
 
@@ -17,4 +18,12 @@ public interface ExecuteFullSyncUseCase {
      * @return si se aplicó o por qué no. Una falla de la sincronización no sale como excepción.
      */
     FullSyncResult executeFullSync(SyncTrigger trigger);
+
+    /**
+     * Igual que {@link #executeFullSync(SyncTrigger)}, y además registra el {@code eventId} del aviso en la misma transacción
+     * que los datos (CU-03, paso 9): si la sincronización falla, el evento cae con el rollback y no queda procesado.
+     *
+     * @param notice el aviso que la disparó.
+     */
+    FullSyncResult executeFullSync(SyncTrigger trigger, CatalogUpdateNotice notice);
 }

@@ -2,6 +2,7 @@ package ar.edu.um.programacion2.catalogo.sync.application.usecases;
 
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.CatalogRepository;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.CatalogSnapshot;
+import ar.edu.um.programacion2.catalogo.sync.domain.model.CatalogUpdateNotice;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.FullSyncResult;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncErrorType;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncStatus;
@@ -9,6 +10,7 @@ import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncTrigger;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.ExecuteFullSyncUseCase;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.CatalogSnapshotProvider;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.InvalidSnapshotException;
+import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.ProcessedEventRepository;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SnapshotAccessDeniedException;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SnapshotRetrievalException;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SnapshotSourceUnavailableException;
@@ -35,7 +37,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <li>pide el snapshot <strong>fuera de toda transacción</strong>: el pedido puede tardar hasta connect + read timeout
  * (ADR 0004) y no tiene sentido retener una conexión de la base mientras tanto;</li>
  * <li>valida las referencias, todavía sin transacción: si hay alguna rota, no se toca la base;</li>
- * <li>en <strong>una</strong> transacción reemplaza la copia local y guarda {@code snapshotVersion} (§6.1, contrato §7).</li>
+ * <li>en <strong>una</strong> transacción reemplaza la copia local y guarda {@code snapshotVersion} (§6.1, contrato §7);
+ * si lo dispara un aviso de Kafka, registra el {@code eventId} en esa misma transacción (CU-03, paso 9).</li>
  * </ol>
  * Si el intento falla de forma transitoria (cátedra no disponible o base local, ver {@link DatabaseFailures}), se
  * reintenta entero, por fuera de la transacción, con las esperas de {@link RetryBackoff} (DP-08). Reintentar adentro no
@@ -67,6 +70,7 @@ public class ExecuteFullSyncUseCaseImpl implements ExecuteFullSyncUseCase {
     private final CatalogSnapshotProvider catalogSnapshotProvider;
     private final CatalogRepository catalogRepository;
     private final SyncStatusRepository syncStatusRepository;
+    private final ProcessedEventRepository processedEventRepository;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
     private final RetryBackoff retryBackoff;
@@ -74,12 +78,23 @@ public class ExecuteFullSyncUseCaseImpl implements ExecuteFullSyncUseCase {
 
     @Override
     public FullSyncResult executeFullSync(SyncTrigger trigger) {
+        return run(trigger, null);
+    }
+
+    @Override
+    public FullSyncResult executeFullSync(SyncTrigger trigger, CatalogUpdateNotice notice) {
+        Objects.requireNonNull(notice, "Falta el aviso de catálogo");
+        return run(trigger, notice);
+    }
+
+    /** @param notice el aviso a registrar con los datos; {@code null} si no lo disparó un aviso. */
+    private FullSyncResult run(SyncTrigger trigger, CatalogUpdateNotice notice) {
         Objects.requireNonNull(trigger, "Falta el disparador de la sincronización");
         int maxAttempts = retryBackoff.maxRetries() + 1;
         for (int attempt = 1; ; attempt++) {
             Failure failure;
             try {
-                return attemptOnce(trigger, attempt);
+                return attemptOnce(trigger, notice, attempt);
             } catch (RuntimeException e) {
                 failure = classify(e);
             }
@@ -107,7 +122,7 @@ public class ExecuteFullSyncUseCaseImpl implements ExecuteFullSyncUseCase {
         }
     }
 
-    private FullSyncResult attemptOnce(SyncTrigger trigger, int attempt) {
+    private FullSyncResult attemptOnce(SyncTrigger trigger, CatalogUpdateNotice notice, int attempt) {
         CatalogSnapshot snapshot = catalogSnapshotProvider.fetchSnapshot();
 
         List<String> brokenReferences = snapshot.brokenReferences();
@@ -115,7 +130,7 @@ public class ExecuteFullSyncUseCaseImpl implements ExecuteFullSyncUseCase {
             return fail(trigger, SyncErrorType.SNAPSHOT_FAILED, describeBrokenReferences(snapshot, brokenReferences), attempt, null);
         }
 
-        transactionTemplate.executeWithoutResult(tx -> apply(snapshot, trigger));
+        transactionTemplate.executeWithoutResult(tx -> apply(snapshot, trigger, notice));
         LOG.info(
             "Sincronización completa ({}): snapshot {} aplicado en el intento {} ({} categorías, {} profesionales, {} horarios)",
             trigger,
@@ -128,8 +143,8 @@ public class ExecuteFullSyncUseCaseImpl implements ExecuteFullSyncUseCase {
         return new FullSyncResult.Applied(snapshot.snapshotVersion(), attempt);
     }
 
-    /** Dentro de la transacción: si algo falla, no queda ni la copia nueva ni la versión. */
-    private void apply(CatalogSnapshot snapshot, SyncTrigger trigger) {
+    /** Dentro de la transacción: si algo falla, no queda ni la copia nueva, ni la versión, ni el {@code eventId}. */
+    private void apply(CatalogSnapshot snapshot, SyncTrigger trigger, CatalogUpdateNotice notice) {
         catalogRepository.replaceAll(snapshot.professionalCategories(), snapshot.professionals(), snapshot.weeklySchedules());
         SyncStatus status = syncStatusRepository.load();
         if (status.hasLocalCopy() && snapshot.snapshotVersion() < status.getLocalVersion()) {
@@ -144,6 +159,25 @@ public class ExecuteFullSyncUseCaseImpl implements ExecuteFullSyncUseCase {
         }
         status.recordSnapshotApplied(snapshot.snapshotVersion(), trigger, clock.instant());
         syncStatusRepository.save(status);
+        if (notice != null) {
+            registerEvent(notice, snapshot);
+        }
+    }
+
+    /**
+     * El {@code eventId} se registra aunque el snapshot sea anterior a la versión que anunciaba: el aviso ya se atendió y
+     * reprocesarlo pediría otro snapshot igual. La versión que falta llega con el próximo evento (o con CU-04).
+     */
+    private void registerEvent(CatalogUpdateNotice notice, CatalogSnapshot snapshot) {
+        if (snapshot.snapshotVersion() < notice.newVersion()) {
+            LOG.warn(
+                "Sincronización completa: el snapshot {} es anterior a la versión {} que anunciaba el evento {}; se registra el evento igual",
+                snapshot.snapshotVersion(),
+                notice.newVersion(),
+                notice.eventId()
+            );
+        }
+        processedEventRepository.registerIfAbsent(notice.processedAt(clock.instant()));
     }
 
     private static Failure classify(RuntimeException failure) {
