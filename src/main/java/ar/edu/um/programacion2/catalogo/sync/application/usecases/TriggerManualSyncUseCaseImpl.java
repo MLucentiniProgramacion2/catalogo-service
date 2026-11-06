@@ -19,8 +19,8 @@ import org.springframework.transaction.TransactionException;
 
 /**
  * CU-08. El modo {@code SNAPSHOT} corre CU-02 con el disparador {@link SyncTrigger#MANUAL} dentro de la exclusión mutua
- * (DP-09). El modo {@code NORMAL} necesita CU-03, que todavía no existe: se responde que no está disponible, sin caer en
- * un snapshot, sin tomar la exclusión y sin registrar un error. El issue de CU-03 lo conecta acá.
+ * (DP-09). El modo {@code NORMAL} necesita elegir el camino con Redis (CU-04): se responde que no está disponible, sin
+ * caer en un snapshot, sin tomar la exclusión y sin registrar un error. Se conecta acá junto con CU-04.
  * <p>
  * La versión "antes" se lee adentro de la exclusión: leída afuera, otra sincronización podría cambiarla durante la
  * espera. "Después" no hace falta leerla: si se aplicó es la del snapshot, y si falló CU-02 garantiza que no cambió.

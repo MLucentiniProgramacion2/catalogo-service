@@ -38,6 +38,10 @@ Completar el `.env` (ignorado por Git):
   vacío, la aplicación no arranca. El JWT nunca va en logs, issues ni PRs.
 - `CATEDRA_CONNECT_TIMEOUT` y `CATEDRA_READ_TIMEOUT` (opcionales, `5s` y `30s` por defecto): tiempo
   para conectar y para recibir la respuesta completa.
+- `CATEDRA_KAFKA_BOOTSTRAP_SERVERS`, `CATEDRA_KAFKA_CATALOG_TOPIC` y `CATEDRA_KAFKA_CONSUMER_GROUP`:
+  acceso al Kafka de la cátedra (ver [ADR 0005](docs/adr/0005-consumidor-kafka.md)). Si falta alguna o
+  está vacía, la aplicación no arranca. Bootstrap y topic salen de `integration`; el grupo es el
+  `kafkaConsumerGroupId` de `integration` + `-catalogo`: cada servicio usa uno propio.
 
 La cátedra solo es accesible por ZeroTier: si falla la conexión, verificar primero
 `sudo zerotier-cli listnetworks`.

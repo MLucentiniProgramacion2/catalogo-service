@@ -80,6 +80,10 @@ Cualquiera de estos cuatro, que comparten el mismo flujo:
   y, si es Kafka, se commitea el offset.
 - **8b. CU-04 detecta una discontinuidad a mitad de camino** (desaparece un `changes:{v}` o una
   entidad no se puede verificar): se conservan las versiones ya aplicadas y se continúa con CU-02.
+- **Falla inesperada fuera de CU-02 y CU-04** (por ejemplo, la base caída en una barrera): se
+  reintenta el evento entero con las esperas de DP-08. Si se agotan, se registra el error, el `eventId`
+  **no** se registra y se commitea el offset. Si tampoco se puede registrar el error, queda en el log y
+  el offset se commitea igual.
 
 ## Postcondiciones
 
@@ -112,11 +116,72 @@ Cualquiera de estos cuatro, que comparten el mismo flujo:
   sincronización y se commitea el offset. La recuperación queda a cargo de la comprobación
   periódica. Se commitea el offset sin haber aplicado los cambios porque el evento no tiene datos:
   solo avisa. Lo que hay que aplicar se deduce siempre de comparar versiones contra Redis, así que
-  no se pierde información y la partición de Kafka no queda trabada reintentando sin límite.
+  no se pierde información y la partición de Kafka no queda trabada reintentando sin límite. Lo
+  inesperado también se reintenta de forma acotada, con las mismas esperas (ver "Recepción por
+  Kafka").
 - **DP-09 (exclusión mutua):** una sola incorporación de cambios a la vez. Un segundo disparador
   espera; al entrar, vuelve a comparar versiones y normalmente ya no tiene nada que hacer. La
   espera tiene un tiempo máximo configurable: si se supera, termina sin aplicar cambios, lo
   registra en el estado de sincronización y la comprobación periódica lo cubre después.
+
+## Recepción por Kafka (issue #31)
+
+Lo que está implementado hoy es el disparador Kafka. Los detalles y las mediciones están en el
+[ADR 0005](../adr/0005-consumidor-kafka.md).
+
+### Qué queda provisorio hasta CU-04
+
+- **Sin Redis, los pasos 6 a 8 se reducen.** La versión objetivo es `newVersion`: si no hay versión
+  local o `newVersion` es mayor, se ejecuta CU-02; si no, 7a. El método `catchUp` de
+  `HandleCatalogUpdatedUseCaseImpl` es el único punto provisorio: CU-04 lo reemplaza por la lectura de
+  la metadata y la elección del camino, sin tocar el listener ni las barreras.
+- **`remoteVersion` no se escribe:** sale de Redis (CU-09 sigue mostrando `remote: null`).
+- **El flujo 6a todavía no existe**, porque no hay Redis.
+- **Snapshot anterior a `newVersion`:** si la cátedra entrega un snapshot más viejo que la versión que
+  anunciaba el evento, se aplica y el `eventId` se registra igual, con un WARN en el log. El aviso ya
+  se atendió y repetirlo pediría el mismo snapshot. La versión que falta llega con el próximo evento o
+  con CU-04.
+- **Sin comprobación periódica (DP-04, 9/11),** la recuperación después de 2a, 4a y 8a es el próximo
+  evento.
+
+Tampoco cambian todavía el modo `NORMAL` de CU-08 (responde `501`) ni CU-01 con versión local.
+
+### Configuración
+
+Las tres variables son obligatorias: sin alguna, la aplicación no arranca.
+
+| Variable | Valor |
+| --- | --- |
+| `CATEDRA_KAFKA_BOOTSTRAP_SERVERS` | `kafkaBootstrapServers` de `integration` (contrato §5.1) |
+| `CATEDRA_KAFKA_CATALOG_TOPIC` | `kafkaCatalogTopic` de `integration` |
+| `CATEDRA_KAFKA_CONSUMER_GROUP` | `kafkaConsumerGroupId` de `integration` + `-catalogo` |
+
+**Un consumer group por servicio:** este usa el sufijo `-catalogo` y turnos usará `-turnos`. Si
+compartieran el grupo, un rebalanceo con el catálogo bloqueado (esperando la exclusión o corriendo un
+snapshot) dejaría a turnos sin recibir mensajes hasta que el catálogo termine. El contrato lo llama
+"sugerido" (§15.2) y la cátedra acepta otros nombres. El topic no se declara: es de la cátedra.
+
+### Commit del offset
+
+Lo hace el contenedor, mensaje por mensaje (`AckMode.RECORD`), cuando el listener vuelve bien: siempre
+después de persistir. Todos los flujos esperados vuelven bien, también los que fallaron, porque el
+aviso no trae datos. El único caso sin commit es que el proceso muera: el evento se vuelve a entregar
+y la deduplicación lo cubre.
+
+### Cómo queda registrado cada flujo
+
+| Flujo | Copia local | `processed_event` | `sync_status` | Log | Offset |
+| --- | --- | --- | --- | --- | --- |
+| Éxito | Reemplazada | Registrado, en la transacción del snapshot | Versión, `SNAPSHOT`, `KAFKA` | INFO | Confirmado |
+| 2a. Inválido | Sin cambios | No | `INVALID_EVENT`, texto fijo | WARN con partición y offset, sin el contenido | Confirmado |
+| 3a. Duplicado | Sin cambios | Ya estaba | Sin cambios | INFO | Confirmado |
+| 4a. Espera vencida | Sin cambios | No | `LOCK_TIMEOUT` | WARN | Confirmado |
+| 7a. Al día | Sin cambios | Registrado, en una transacción corta propia | Sin cambios | INFO | Confirmado |
+| 8a. CU-02 falla | Sin cambios | No: cae con el rollback | El error de CU-02 | ERROR y WARN | Confirmado |
+| Falla inesperada, se agotan los reintentos | Sin cambios | No | `EVENT_PROCESSING_FAILED`, texto fijo | WARN por intento y ERROR | Confirmado |
+
+Las descripciones de `sync_status` se informan a los usuarios (CU-09): son textos fijos, sin nombres de
+clases, hosts, tokens ni el contenido del mensaje.
 
 ## Respaldo en las consignas
 

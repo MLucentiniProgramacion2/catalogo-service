@@ -60,9 +60,9 @@ El administrador pide una sincronización manual.
 - **DP-10 (modos de la sincronización manual):** por defecto es un disparador más de CU-03 (misma
   lógica e idempotencia). Con un parámetro explícito fuerza un snapshot (CU-02), útil para mostrar
   la reconstrucción en la demo. Los dos modos respetan la exclusión mutua (DP-09).
-- **Modo normal pendiente (issue #29):** CU-03 todavía no existe. Hasta que el issue de CU-03 lo
-  conecte, el modo normal responde `501` y **un `POST` sin `mode` también**, porque es el modo por
-  defecto. Hoy la sincronización manual se dispara con `mode=SNAPSHOT`.
+- **Modo normal pendiente (issue #29):** por ahora CU-03 solo tiene el disparador Kafka, y sin Redis
+  no puede elegir el camino. Hasta que se conecte con CU-04, el modo normal responde `501` y **un
+  `POST` sin `mode` también**, porque es el modo por defecto. Hoy la sincronización manual se dispara con `mode=SNAPSHOT`.
 - Ya estaba decidido que la sincronización es **automática** al recibir `CatalogUpdated`: la manual
   se suma, no la reemplaza.
 
@@ -89,7 +89,7 @@ Respuesta `200 OK`:
 
 `localVersionBefore` es `null` si la base no tenía versión. `attempts` cuenta los intentos, con el
 primero incluido (DP-08). Por ahora `path` es siempre `SNAPSHOT`: `INCREMENTAL` y "sin cambios"
-llegan con CU-03.
+llegan con CU-04.
 
 | Caso | Status | Cuerpo |
 | --- | --- | --- |
@@ -97,7 +97,7 @@ llegan con CU-03.
 | Sin `ROLE_ADMIN`, o token técnico de servicio (2b) | `403` | vacío (Spring Security) |
 | Modo desconocido o en minúsculas (2c) | `400` | `problem+json`, `message: error.http.400`, `detail: Failed to convert 'mode'`, sin `code`, como CU-06 |
 | Se superó la espera de la exclusión mutua (3a) | `409` | `problem+json`, `code: SYNC_IN_PROGRESS` |
-| `mode=NORMAL` o sin `mode`, hasta CU-03 | `501` | `problem+json`, `code: SYNC_MODE_NOT_AVAILABLE` |
+| `mode=NORMAL` o sin `mode`, hasta CU-04 | `501` | `problem+json`, `code: SYNC_MODE_NOT_AVAILABLE` |
 | La sincronización falló (3b) | `502` | `problem+json`, `code: SYNC_FAILED`, con `errorType`, versiones e intentos |
 
 Ejemplo de `502`:

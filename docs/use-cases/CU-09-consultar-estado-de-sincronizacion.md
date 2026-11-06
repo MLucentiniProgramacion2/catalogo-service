@@ -88,8 +88,8 @@ Con la base sin datos y sin ningún intento (3a):
 | `localVersion` | Versión aplicada. `null` significa "sin datos": nunca se confirmó un snapshot. |
 | `inProgress` | Si hay una sincronización corriendo ahora. Sale de la exclusión mutua en memoria; no mira si hay alguna esperando. |
 | `lastSuccess` | Última sincronización exitosa: `path` es `SNAPSHOT` o `INCREMENTAL`, y `trigger` es `KAFKA`, `STARTUP`, `PERIODIC` o `MANUAL`. |
-| `remote` | Última versión publicada conocida y cuándo se leyó. No se consulta Redis en cada pedido; queda en `null` hasta CU-03. |
-| `lastError` | Último error, aunque después haya habido un éxito: `lastSuccess` y `lastError` traen su fecha para compararlas. `type` es un valor de `SyncErrorType`. |
+| `remote` | Última versión publicada conocida y cuándo se leyó. No se consulta Redis en cada pedido; queda en `null` hasta CU-04. |
+| `lastError` | Último error, aunque después haya habido un éxito: `lastSuccess` y `lastError` traen su fecha para compararlas. `type` es un valor de `SyncErrorType`; entre ellos, `INVALID_EVENT` (se descartó un aviso de Kafka ilegible o incompleto) y `EVENT_PROCESSING_FAILED` (se descartó un aviso después de agotar los reintentos). |
 
 Cada grupo es `null` entero si no hay datos, nunca a medias. La lectura es una sola fila en una
 transacción de solo lectura; "en curso" se mira antes, así que el peor desfase es informar `inProgress`
