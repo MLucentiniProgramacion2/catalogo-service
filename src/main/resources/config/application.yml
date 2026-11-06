@@ -227,6 +227,12 @@ catedra:
     connect-timeout: ${CATEDRA_CONNECT_TIMEOUT:5s}
     # Plazo total para recibir la respuesta completa (cuerpo incluido), no de inactividad.
     read-timeout: ${CATEDRA_READ_TIMEOUT:30s}
+  # Consumidor de CatalogUpdated (contrato §15, ADR 0005). Ver CatedraKafkaProperties: el resto de la
+  # configuración está en Java y spring.kafka.* no se usa. Sin valor por defecto, como el token.
+  kafka:
+    bootstrap-servers: ${CATEDRA_KAFKA_BOOTSTRAP_SERVERS:}
+    catalog-topic: ${CATEDRA_KAFKA_CATALOG_TOPIC:}
+    consumer-group: ${CATEDRA_KAFKA_CONSUMER_GROUP:}
 
 sync:
   startup:

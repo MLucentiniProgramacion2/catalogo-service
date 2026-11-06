@@ -95,6 +95,13 @@ catedra:
     # contexto llega a la cátedra real; los tests del cliente usan un servidor simulado.
     url: http://localhost:1
     token: token-falso-solo-para-tests
+  kafka:
+    # Solo para tests: valores falsos, y el listener apagado para que cada contexto no se conecte a
+    # un broker que no existe. Lo prenden solo los tests de Kafka, con un broker de Testcontainers.
+    bootstrap-servers: localhost:1
+    catalog-topic: topic-de-test
+    consumer-group: grupo-de-test
+    listener-enabled: false
 
 sync:
   startup:
