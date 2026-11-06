@@ -5,17 +5,18 @@ import java.util.List;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Limpieza y lectura directa de las tablas de la copia local y de {@code sync_status} para los tests de integración de
- * la sincronización. Con SQL y no con los adaptadores: la preparación y la verificación no pueden depender del código
+ * Limpieza y lectura directa de las tablas de la copia local, de {@code sync_status} y de {@code processed_event} para
+ * los tests de integración de la sincronización. Con SQL y no con los adaptadores: la preparación y la verificación no pueden depender del código
  * que se prueba.
  */
 public final class SyncTestDatabase {
 
     private SyncTestDatabase() {}
 
-    /** Deja la base como recién instalada: copia vacía y la fila de {@code sync_status} sin datos. */
+    /** Deja la base como recién instalada: copia vacía, sin eventos procesados y la fila de {@code sync_status} sin datos. */
     public static void reset(TransactionTemplate transactionTemplate, EntityManager em) {
         transactionTemplate.executeWithoutResult(tx -> {
+            em.createNativeQuery("delete from processed_event").executeUpdate();
             em.createNativeQuery("delete from weekly_schedule").executeUpdate();
             em.createNativeQuery("delete from professional").executeUpdate();
             em.createNativeQuery("delete from professional_category").executeUpdate();
@@ -43,6 +44,17 @@ public final class SyncTestDatabase {
 
     public static List<Long> scheduleIds(TransactionTemplate transactionTemplate, EntityManager em) {
         return ids(transactionTemplate, em, "select id from weekly_schedule order by id");
+    }
+
+    public static List<String> processedEventIds(TransactionTemplate transactionTemplate, EntityManager em) {
+        return transactionTemplate.execute(tx ->
+            em
+                .createNativeQuery("select event_id from processed_event order by event_id", String.class)
+                .getResultList()
+                .stream()
+                .map(String.class::cast)
+                .toList()
+        );
     }
 
     private static List<Long> ids(TransactionTemplate transactionTemplate, EntityManager em, String sql) {
