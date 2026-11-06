@@ -17,10 +17,12 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
 import org.springframework.kafka.listener.ContainerProperties.AckMode;
 import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.listener.MessageListenerContainer;
 import org.springframework.util.backoff.BackOffExecution;
 
 /**
@@ -139,6 +141,28 @@ class CatedraKafkaPropertiesTest {
 
         assertThat(backOff.start().nextBackOff()).isEqualTo(1000L);
         assertThat(backOff.start().nextBackOff()).isEqualTo(1000L);
+    }
+
+    @Test
+    void elListenerApagadoNoArrancaAunqueSeReinicieElContexto() {
+        // Es lo que hace Spring 7 con los contextos en caché de los tests: los pausa y los reanuda.
+        runner
+            .withUserConfiguration(CatalogUpdatedListener.class)
+            .withPropertyValues(
+                "catedra.kafka.bootstrap-servers=localhost:1",
+                GRUPO,
+                "catedra.kafka.catalog-topic=topic-de-prueba",
+                "catedra.kafka.listener-enabled=false"
+            )
+            .run(context -> {
+                KafkaListenerEndpointRegistry registro = context.getBean(KafkaListenerEndpointRegistry.class);
+                assertThat(registro.getListenerContainers()).hasSize(1);
+
+                context.getSourceApplicationContext().stop();
+                context.getSourceApplicationContext().start();
+
+                assertThat(registro.getListenerContainers()).noneMatch(MessageListenerContainer::isRunning);
+            });
     }
 
     private static ConcurrentMessageListenerContainer<?, ?> contenedor(ConcurrentKafkaListenerContainerFactory<?, ?> factory) {

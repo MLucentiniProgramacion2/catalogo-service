@@ -10,10 +10,13 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.listener.CommonErrorHandler;
@@ -46,6 +49,7 @@ import org.springframework.util.backoff.BackOffExecution;
  * </ul>
  */
 @Configuration
+@EnableKafka
 @EnableConfigurationProperties(CatedraKafkaProperties.class)
 public class CatedraKafkaConfiguration {
 
@@ -118,6 +122,16 @@ public class CatedraKafkaConfiguration {
             LOG.warn("El listener de CatalogUpdated está apagado (catedra.kafka.listener-enabled=false)");
         }
         return factory;
+    }
+
+    /**
+     * Apagado es apagado. Por defecto, el registro arranca los contenedores cada vez que se reinicia el contexto, aunque
+     * tengan {@code autoStartup=false}. Spring 7 hace eso con los contextos que los tests tienen en caché: los pausa al
+     * cambiar de contexto y los reanuda al reusarlos, y un listener "apagado" se conectaba a un broker que no existe.
+     */
+    @Bean
+    public SmartInitializingSingleton listenerRespectsAutoStartup(KafkaListenerEndpointRegistry registry) {
+        return () -> registry.setAlwaysStartAfterRefresh(false);
     }
 
     /** Una espera por cada valor de la lista, y después se termina. Sin {@code ExponentialBackOff}, para no tener otra fuente de DP-08. */
