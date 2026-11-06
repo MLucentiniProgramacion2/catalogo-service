@@ -31,4 +31,13 @@ public enum SyncErrorType {
      * intentos (CU-02, flujo 5a). La transacción se deshizo: la copia y la versión anteriores quedaron intactas.
      */
     DATABASE_UNAVAILABLE,
+
+    /** Llegó un mensaje de Kafka ilegible o sin {@code eventId} o {@code newVersion}, y se descartó (CU-03, flujo 2a). */
+    INVALID_EVENT,
+
+    /**
+     * Un aviso de Kafka se descartó por un error inesperado después de agotar los reintentos (DP-08): por ejemplo, la base
+     * caída en una barrera. Su {@code eventId} no quedó registrado.
+     */
+    EVENT_PROCESSING_FAILED,
 }

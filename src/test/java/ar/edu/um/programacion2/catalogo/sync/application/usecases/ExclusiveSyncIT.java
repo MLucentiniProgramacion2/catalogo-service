@@ -7,6 +7,8 @@ import ar.edu.um.programacion2.catalogo.IntegrationTest;
 import ar.edu.um.programacion2.catalogo.sync.SyncLockHolder;
 import ar.edu.um.programacion2.catalogo.sync.SyncTestDatabase;
 import ar.edu.um.programacion2.catalogo.sync.application.service.SyncService;
+import ar.edu.um.programacion2.catalogo.sync.domain.model.CatalogEventResult;
+import ar.edu.um.programacion2.catalogo.sync.domain.model.CatalogUpdateNotice;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncErrorType;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncStatus;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncTrigger;
@@ -74,6 +76,21 @@ class ExclusiveSyncIT {
         assertThat(estado.getLastErrorType()).isEqualTo(SyncErrorType.LOCK_TIMEOUT);
         assertThat(estado.getLastErrorDescription()).contains("STARTUP");
         assertThat(estado.hasLocalCopy()).isFalse();
+    }
+
+    @Test
+    void unAvisoQueVenceLaEsperaDejaLockTimeoutYNoRegistraElEvento() {
+        CatalogEventResult resultado;
+        try (SyncLockHolder otra = SyncLockHolder.hold(syncLock)) {
+            resultado = syncService.handleCatalogUpdated(new CatalogUpdateNotice("8b097be5-7ba5-4618-97e8-c502d3f46723", 41));
+        }
+
+        assertThat(resultado).isEqualTo(new CatalogEventResult.NotExecuted());
+        SyncStatus estado = transactionTemplate.execute(tx -> syncStatusRepository.load());
+        assertThat(estado.getLastErrorType()).isEqualTo(SyncErrorType.LOCK_TIMEOUT);
+        assertThat(estado.getLastErrorDescription()).contains("KAFKA");
+        assertThat(estado.hasLocalCopy()).isFalse();
+        assertThat(SyncTestDatabase.processedEventIds(transactionTemplate, em)).isEmpty();
     }
 
     @Test
