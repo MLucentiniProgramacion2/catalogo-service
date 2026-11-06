@@ -11,20 +11,22 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface JpaProcessedEventRepository extends JpaRepository<ProcessedEventEntity, String> {
     /**
-     * Inserta la fila si el {@code event_id} no existe. Es SQL nativo porque {@code ON CONFLICT} es de PostgreSQL y JPQL no
-     * tiene un equivalente: {@code save} hace un {@code merge} (lee y después inserta), y entre esos dos pasos otra
-     * transacción puede insertar la misma clave, con una violación que deshace la transacción entera.
+     * Inserta la fila si el {@code event_id} no existe, en una sola sentencia. {@code save} no sirve: hace un {@code merge}
+     * (lee y después inserta), y entre esos dos pasos otra transacción puede insertar la misma clave, con una violación que
+     * deshace la transacción entera.
+     * <p>
+     * Es HQL: {@code insert} y {@code on conflict} son de Hibernate, no de JPQL. Hibernate valida los nombres al crear el
+     * repositorio, así que uno mal escrito impide arrancar. Con SQL nativo, recién fallaría al llegar el primer aviso.
      *
      * @return filas insertadas: 0 si ya estaba.
      */
     @Modifying
     @Query(
-        value = """
-        insert into processed_event (event_id, new_version, processed_at)
+        """
+        insert into ProcessedEventEntity (eventId, newVersion, processedAt)
         values (:eventId, :newVersion, :processedAt)
-        on conflict (event_id) do nothing
-        """,
-        nativeQuery = true
+        on conflict(eventId) do nothing
+        """
     )
     int insertIfAbsent(@Param("eventId") String eventId, @Param("newVersion") long newVersion, @Param("processedAt") Instant processedAt);
 }

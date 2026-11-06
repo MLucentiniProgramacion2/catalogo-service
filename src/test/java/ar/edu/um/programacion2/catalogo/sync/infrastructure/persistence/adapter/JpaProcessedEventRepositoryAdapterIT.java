@@ -53,7 +53,7 @@ class JpaProcessedEventRepositoryAdapterIT {
     void guardaLaVersionYLaFechaTalCualLlegan() {
         registrar(new ProcessedEvent(EVENTO, 41, T1));
 
-        // Se lee por la entidad, que es como lo lee Hibernate: el INSERT es nativo y tiene que respetar la zona UTC.
+        // Se lee por la entidad: el Instant entra como parámetro del INSERT, y es Hibernate quien lo guarda en UTC.
         ProcessedEventEntity leido = transactionTemplate.execute(tx -> em.find(ProcessedEventEntity.class, EVENTO));
         assertThat(leido.getNewVersion()).isEqualTo(41L);
         assertThat(leido.getProcessedAt()).isEqualTo(T1);
