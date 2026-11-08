@@ -41,7 +41,7 @@ midió de qué sale de leer el código.
 | `bootstrap-servers` | `CATEDRA_KAFKA_BOOTSTRAP_SERVERS` | ninguno: sin ella la app no arranca |
 | `catalog-topic` | `CATEDRA_KAFKA_CATALOG_TOPIC` | ninguno: sin ella la app no arranca |
 | `consumer-group` | `CATEDRA_KAFKA_CONSUMER_GROUP` | ninguno: sin ella la app no arranca |
-| `max-poll-interval` | (no) | `15m` |
+| `max-poll-interval` | (no) | `25m` (`15m` hasta el #33) |
 | `auth-retry-interval` | (no) | `1m` |
 | `listener-enabled` | (no) | `true`; solo `src/test` lo apaga |
 
@@ -102,7 +102,7 @@ Cada intento queda en el log con un `RetryListener`, y al agotarse `CatalogEvent
 9 s, offset sin moverse). Si no puede registrar el error, lo deja en el log y el offset se confirma
 igual.
 
-### `max.poll.interval.ms` = 15 min y `max.poll.records` = 1
+### `max.poll.interval.ms` = 25 min y `max.poll.records` = 1
 
 | Tramo | Tiempo |
 | --- | --- |
@@ -119,8 +119,20 @@ espera cuenta dentro de la ventana** de esa entrega: con 2 s de trabajo y 4 s de
 venció el plazo. Así que en una ventana cabe una sola espera, 4 s como mucho: el peor caso real son
 721 s. Se suman los 7 s como cota, para no depender de ese detalle.
 
-Con 900 s sobran 176 s. `CatedraKafkaPropertiesTest` deja la cuenta en un test. **CU-04 tiene que
-recalcularla.**
+Con 900 s sobran 176 s. `CatedraKafkaPropertiesTest` deja la cuenta en un test.
+
+**Recalculado con CU-04 (issue #33): 25 min.** El peor caso de CU-02 pasa a ser el de CU-03 con Redis
+(618 s, ver DP-09 en el [README](../use-cases/README.md)), y la espera de la exclusión sube a 12 min:
+
+| Tramo | Tiempo |
+| --- | --- |
+| Primera barrera (Hikari) | 30 s |
+| Espera de la exclusión | 720 s |
+| Peor caso de CU-03 con Redis (incluye leer la versión) | 618 s |
+| Esperas del `DefaultErrorHandler` | 7 s |
+| **Cota** | **1375 s** |
+
+Con 1500 s sobran 125 s. La cuenta la arma `SyncWorstCase` con los valores reales de la configuración.
 
 `max.poll.records=1` hace falta porque el plazo se cuenta por `poll`, no por mensaje. Medido, con un
 plazo de 5 s y 3 mensajes de 3 s: con lotes hubo 5 entregas (2 duplicados); de a uno, 3 entregas.
@@ -161,7 +173,7 @@ consumidor, para ganar poco.
 
 - Sin las tres variables, la aplicación no arranca, como con `CATEDRA_JWT`. Un broker caído, en
   cambio, no frena el arranque: el servicio sirve la copia local (DP-03) y Kafka reintenta con WARN.
-- Un listener bloqueado tarda más en notarse: hasta 15 min.
+- Un listener bloqueado tarda más en notarse: hasta 25 min (15 hasta el #33).
 - **Apagado:** medido, el listener bloqueado no se interrumpe y `context.close()` espera 30 s (el
   plazo de apagado de Spring Boot). El offset no se confirma y el mensaje se reentrega al volver: las
   barreras cubren el duplicado.

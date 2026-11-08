@@ -72,8 +72,10 @@ Cualquiera de estos cuatro, que comparten el mismo flujo:
   cambios** y lo deja registrado en el estado de sincronización. Si es Kafka, el `eventId`
   **no** se registra y se commitea el offset. La comprobación periódica lo cubre después.
 - **6a. Redis no disponible o timeout:** reintentos acotados (DP-08). Si se agotan, no se aplica
-  nada, se registra el error y, si es Kafka, el `eventId` **no** se registra y se commitea el
-  offset. La comprobación periódica recupera el atraso cuando Redis vuelva.
+  nada, se registra `REDIS_UNAVAILABLE` y, si es Kafka, el `eventId` **no** se registra y se
+  commitea el offset. La comprobación periódica recupera el atraso cuando Redis vuelva. Si Redis
+  rechaza la credencial (`WRONGPASS` o `NOPERM`), no se reintenta ni se cae en un snapshot: es un
+  `INVALID_CREDENTIALS` cuya descripción dice que fue Redis.
 - **7a. La copia ya está al día** (versión local mayor o igual a la objetivo, o `newVersion` menor
   o igual a la versión local, por ejemplo porque la comprobación periódica ya la aplicó): no se
   aplican cambios. Si es Kafka, se registra el `eventId` si faltaba (en una transacción corta
@@ -82,8 +84,10 @@ Cualquiera de estos cuatro, que comparten el mismo flujo:
   completas, porque cada versión es su propia transacción. La versión en curso hace rollback. El
   `eventId` **no** se registra (cae con el rollback), el error queda en el estado de sincronización
   y, si es Kafka, se commitea el offset.
-- **8b. CU-04 detecta una discontinuidad a mitad de camino** (desaparece un `changes:{v}` o una
-  entidad no se puede verificar): se conservan las versiones ya aplicadas y se continúa con CU-02.
+- **8b. CU-04 no puede seguir a mitad de camino** (una entidad no está en su Hash o no se puede
+  verificar, un `changes:{v}` dice otra versión, o vence el plazo del lote): se conservan las versiones
+  ya aplicadas y se continúa con CU-02, con el mismo aviso. Que falte un `changes:{v}` ya no pasa a
+  mitad de camino: se decide en el paso 8, con todos los del lote leídos de una vez.
 - **Falla inesperada fuera de CU-02 y CU-04** (por ejemplo, la base caída en una barrera): se
   reintenta el evento entero con las esperas de DP-08. Si se agotan, se registra el error, el `eventId`
   **no** se registra y se commitea el offset. Si tampoco se puede registrar el error, queda en el log y
@@ -130,25 +134,8 @@ Cualquiera de estos cuatro, que comparten el mismo flujo:
 
 ## Recepción por Kafka (issue #31)
 
-Lo que está implementado hoy es el disparador Kafka. Los detalles y las mediciones están en el
+El disparador Kafka está implementado desde el #31. Los detalles y las mediciones del consumidor están en el
 [ADR 0005](../adr/0005-consumidor-kafka.md).
-
-### Qué queda provisorio hasta CU-04
-
-- **Sin Redis, los pasos 6 a 8 se reducen.** La versión objetivo es `newVersion`: si no hay versión
-  local o `newVersion` es mayor, se ejecuta CU-02; si no, 7a. El método `catchUp` de
-  `HandleCatalogUpdatedUseCaseImpl` es el único punto provisorio: CU-04 lo reemplaza por la lectura de
-  la metadata y la elección del camino, sin tocar el listener ni las barreras.
-- **`remoteVersion` no se escribe:** sale de Redis (CU-09 sigue mostrando `remote: null`).
-- **El flujo 6a todavía no existe**, porque no hay Redis.
-- **Snapshot anterior a `newVersion`:** si la cátedra entrega un snapshot más viejo que la versión que
-  anunciaba el evento, se aplica y el `eventId` se registra igual, con un WARN en el log. El aviso ya
-  se atendió y repetirlo pediría el mismo snapshot. La versión que falta llega con el próximo evento o
-  con CU-04.
-- **Sin comprobación periódica (DP-04, 9/11),** la recuperación después de 2a, 4a y 8a es el próximo
-  evento.
-
-Tampoco cambian todavía el modo `NORMAL` de CU-08 (responde `501`) ni CU-01 con versión local.
 
 ### Configuración
 
@@ -172,20 +159,57 @@ después de persistir. Todos los flujos esperados vuelven bien, también los que
 aviso no trae datos. El único caso sin commit es que el proceso muera: el evento se vuelve a entregar
 y la deduplicación lo cubre.
 
+## Con Redis (issue #33)
+
+Los pasos 6 a 10 son los mismos para todos los disparadores: los implementa
+`IncorporateChangesUseCase`, que usan el aviso de Kafka y CU-08 en modo normal (y van a usar el arranque
+y la comprobación periódica). Cada disparador conserva lo suyo: las barreras del aviso, la exclusión y
+la lectura de la versión adentro de ella. El cliente de Redis está en el
+[ADR 0006](../adr/0006-cliente-redis.md).
+
+- **Sin versión local, CU-02 directo, sin leer Redis** (paso 6): la primera copia viene por REST y un
+  Redis caído no la puede impedir. `remoteVersion` se completa con el próximo aviso.
+- **La versión objetivo es `currentVersion` de Redis.** `newVersion` es solo un aviso.
+- **`remoteVersion`** se escribe en una transacción corta, justo después de leer la metadata, con
+  `load` y `save` en la misma transacción. Si la copia está al día y lo disparó un aviso, esa misma
+  transacción registra el `eventId` (7a).
+- **El camino** (contrato §14.2 y §18.2, literal): snapshot si la local es **menor** que
+  `oldestAvailableVersion`, o si falta algún `changes:{v}` entre la local + 1 y la objetivo; si no,
+  incremental. Con la local en 3 y `oldest` en 4 es snapshot aunque exista `changes:4`. Los
+  `changes:{v}` del lote se leen con un solo `MGET`: sirve para ver si falta alguno y ya trae su
+  contenido (no cambia), así que la discontinuidad por falta de un `changes:{v}` se decide acá, antes
+  de aplicar nada (antes era el flujo 1a de CU-04).
+- **Aviso adelantado a Redis** (`newVersion` mayor que `currentVersion`): se llega hasta la publicada,
+  con un WARN, y el `eventId` se registra igual, como el snapshot anterior a `newVersion` del #31. La
+  versión que falta llega con el próximo aviso o con la comprobación periódica.
+- **Metadata inválida** (falta un campo o no es un número): el estado no se puede verificar, va
+  snapshot y `remoteVersion` no se escribe. `oldest` mayor que `current` no se rechaza: el contrato no
+  lo prohíbe y la regla del camino da un resultado coherente igual.
+- **Reintentos (DP-08):** la lectura previa (metadata, `remoteVersion` y cambios) comparte un
+  presupuesto de 3 reintentos, y un reintento repite **solo el paso que falló**: si falla escribir
+  `remoteVersion`, la metadata no se vuelve a leer. CU-04 y CU-02 tienen el suyo cada uno.
+  `attempts` suma los tres.
+
 ### Cómo queda registrado cada flujo
 
-| Flujo | Copia local | `processed_event` | `sync_status` | Log | Offset |
+| Flujo | Copia local | `processed_event` | `sync_status` | Log | Offset (si es Kafka) |
 | --- | --- | --- | --- | --- | --- |
-| Éxito | Reemplazada | Registrado, en la transacción del snapshot | Versión, `SNAPSHOT`, `KAFKA` | INFO | Confirmado |
+| Éxito por incremental | Las versiones aplicadas, una transacción cada una | Registrado, con la última versión | Versión, `INCREMENTAL`, disparador; `remoteVersion` | INFO | Confirmado |
+| Éxito por snapshot | Reemplazada | Registrado, en la transacción del snapshot | Versión, `SNAPSHOT`, disparador; `remoteVersion` si se leyó | INFO | Confirmado |
 | 2a. Inválido | Sin cambios | No | `INVALID_EVENT`, texto fijo | WARN con partición y offset, sin el contenido | Confirmado |
 | 3a. Duplicado | Sin cambios | Ya estaba | Sin cambios | INFO | Confirmado |
 | 4a. Espera vencida | Sin cambios | No | `LOCK_TIMEOUT` | WARN | Confirmado |
-| 7a. Al día | Sin cambios | Registrado, en una transacción corta propia | Sin cambios | INFO | Confirmado |
-| 8a. CU-02 falla | Sin cambios | No: cae con el rollback | El error de CU-02 | ERROR y WARN | Confirmado |
+| 6a. Redis no disponible | Sin cambios | No | `REDIS_UNAVAILABLE`, sin `remoteVersion` | WARN por intento y ERROR | Confirmado |
+| 6a. Redis rechaza la credencial | Sin cambios | No | `INVALID_CREDENTIALS`, la descripción dice "Redis" | ERROR | Confirmado |
+| 7a. Al día por la segunda barrera (`newVersion` menor o igual a la local) | Sin cambios | Registrado, en una transacción corta | Sin cambios: no se lee Redis | INFO | Confirmado |
+| 7a. Al día por la metadata | Sin cambios | Registrado, junto con `remoteVersion` | `remoteVersion` | INFO | Confirmado |
+| 8a. CU-04 falla | Las versiones aplicadas antes se conservan | No | El error de CU-04 (`REDIS_UNAVAILABLE`, `DATABASE_UNAVAILABLE`, `INCREMENTAL_FAILED` o `INVALID_CREDENTIALS`) | WARN por intento y ERROR | Confirmado |
+| 8a. CU-02 falla | Sin cambios (o las versiones de CU-04, si venía de 8b) | No | El error de CU-02 | ERROR y WARN | Confirmado |
+| 8b. Discontinuidad a mitad de camino o plazo vencido | Las versiones aplicadas, y después reemplazada por el snapshot | Registrado, en la transacción del snapshot | `SNAPSHOT` | WARN con el motivo | Confirmado |
 | Falla inesperada, se agotan los reintentos | Sin cambios | No | `EVENT_PROCESSING_FAILED`, texto fijo | WARN por intento y ERROR | Confirmado |
 
 Las descripciones de `sync_status` se informan a los usuarios (CU-09): son textos fijos, sin nombres de
-clases, hosts, tokens ni el contenido del mensaje.
+clases, hosts, usuarios, tokens ni el contenido del mensaje.
 
 ## Respaldo en las consignas
 

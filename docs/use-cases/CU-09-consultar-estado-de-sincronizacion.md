@@ -88,8 +88,8 @@ Con la base sin datos y sin ningún intento (3a):
 | `localVersion` | Versión aplicada. `null` significa "sin datos": nunca se confirmó un snapshot. |
 | `inProgress` | Si hay una sincronización corriendo ahora. Sale de la exclusión mutua en memoria; no mira si hay alguna esperando. |
 | `lastSuccess` | Última sincronización exitosa: `path` es `SNAPSHOT` o `INCREMENTAL`, y `trigger` es `KAFKA`, `STARTUP`, `PERIODIC` o `MANUAL`. |
-| `remote` | Última versión publicada conocida y cuándo se leyó. No se consulta Redis en cada pedido; queda en `null` hasta CU-04. |
-| `lastError` | Último error, aunque después haya habido un éxito: `lastSuccess` y `lastError` traen su fecha para compararlas. `type` es un valor de `SyncErrorType`; entre ellos, `INVALID_EVENT` (se descartó un aviso de Kafka ilegible o incompleto) y `EVENT_PROCESSING_FAILED` (se descartó un aviso después de agotar los reintentos). |
+| `remote` | Última versión publicada conocida y cuándo se leyó: la escribe CU-03 cada vez que lee la metadata de Redis (aviso de Kafka o CU-08 en modo normal), también cuando la copia está al día. No se consulta Redis en cada pedido. Queda en `null` hasta la primera lectura: sin versión local, CU-03 va directo al snapshot sin leer Redis. |
+| `lastError` | Último error, aunque después haya habido un éxito: `lastSuccess` y `lastError` traen su fecha para compararlas. `type` es un valor de `SyncErrorType`; entre ellos, `INVALID_EVENT` (se descartó un aviso de Kafka ilegible o incompleto), `EVENT_PROCESSING_FAILED` (se descartó un aviso después de agotar los reintentos), `REDIS_UNAVAILABLE` (Redis no respondió) e `INCREMENTAL_FAILED` (la base rechazó una versión incremental; las anteriores se conservan). Con `INVALID_CREDENTIALS`, la descripción dice si fue la API REST o Redis. Que el estado publicado no se pueda verificar no es un error: termina en un snapshot, que queda como `lastSuccess` con `path: SNAPSHOT`, y el motivo va al log. |
 
 Cada grupo es `null` entero si no hay datos, nunca a medias. La lectura es una sola fila en una
 transacción de solo lectura; "en curso" se mira antes, así que el peor desfase es informar `inProgress`
