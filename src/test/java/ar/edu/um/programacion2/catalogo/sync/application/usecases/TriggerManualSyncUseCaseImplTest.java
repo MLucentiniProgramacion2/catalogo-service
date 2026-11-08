@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import ar.edu.um.programacion2.catalogo.sync.SyncLockHolder;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.FullSyncResult;
+import ar.edu.um.programacion2.catalogo.sync.domain.model.IncorporationResult;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.ManualSyncResult;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncErrorType;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncMode;
@@ -18,6 +19,7 @@ import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncStatus;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncTrigger;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.ExecuteFullSyncUseCase;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.GetSyncStatusUseCase;
+import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.IncorporateChangesUseCase;
 import ar.edu.um.programacion2.catalogo.sync.infrastructure.lock.InMemorySyncLock;
 import java.time.Duration;
 import java.time.Instant;
@@ -41,6 +43,9 @@ class TriggerManualSyncUseCaseImplTest {
     private ExecuteFullSyncUseCase executeFullSyncUseCase;
 
     @Mock
+    private IncorporateChangesUseCase incorporateChangesUseCase;
+
+    @Mock
     private SyncErrorRecorder syncErrorRecorder;
 
     private final InMemorySyncLock lock = new InMemorySyncLock(Duration.ofMillis(20));
@@ -52,6 +57,7 @@ class TriggerManualSyncUseCaseImplTest {
         useCase = new TriggerManualSyncUseCaseImpl(
             getSyncStatusUseCase,
             executeFullSyncUseCase,
+            incorporateChangesUseCase,
             new ExclusiveSync(lock, syncErrorRecorder),
             syncErrorRecorder
         );
@@ -118,15 +124,62 @@ class TriggerManualSyncUseCaseImplTest {
     }
 
     @Test
-    void elModoNormalRespondeQueNoEstaDisponibleSinSincronizarNiRegistrar() {
+    void elModoNormalCorreCu03ConElDisparadorManualYLaVersionLeidaAdentroDeLaExclusion() {
+        when(getSyncStatusUseCase.getSyncStatus()).thenAnswer(invocation -> {
+            assertThat(lock.isHeld()).isTrue();
+            return estadoConVersion(88);
+        });
+        when(incorporateChangesUseCase.incorporate(SyncTrigger.MANUAL, 88L)).thenAnswer(invocation -> {
+            assertThat(lock.isHeld()).isTrue();
+            return new IncorporationResult.Applied(88L, 89, SyncPath.INCREMENTAL, 1);
+        });
+
+        assertThat(useCase.triggerManualSync(SyncMode.NORMAL)).isEqualTo(new ManualSyncResult.Applied(88L, 89, SyncPath.INCREMENTAL, 1));
+        verifyNoInteractions(executeFullSyncUseCase, syncErrorRecorder);
+    }
+
+    @Test
+    void elModoNormalConLaCopiaAlDiaEsSinCambios() {
+        when(getSyncStatusUseCase.getSyncStatus()).thenReturn(estadoConVersion(89));
+        when(incorporateChangesUseCase.incorporate(SyncTrigger.MANUAL, 89L)).thenReturn(new IncorporationResult.UpToDate(89, 89, 1));
+
+        assertThat(useCase.triggerManualSync(SyncMode.NORMAL)).isEqualTo(new ManualSyncResult.UpToDate(89, 89, 1));
+    }
+
+    @Test
+    void siElModoNormalFallaLaVersionDespuesEsLaUltimaAplicada() {
+        when(getSyncStatusUseCase.getSyncStatus()).thenReturn(estadoConVersion(88));
+        when(incorporateChangesUseCase.incorporate(SyncTrigger.MANUAL, 88L)).thenReturn(
+            new IncorporationResult.Failed(88L, 89L, SyncErrorType.REDIS_UNAVAILABLE, "Redis de la cátedra no respondió", 4)
+        );
+
+        assertThat(useCase.triggerManualSync(SyncMode.NORMAL)).isEqualTo(
+            new ManualSyncResult.Failed(88L, 89L, SyncErrorType.REDIS_UNAVAILABLE, "Redis de la cátedra no respondió", 4)
+        );
+    }
+
+    @Test
+    void elModoNormalTambienRespetaLaExclusion() {
         ManualSyncResult resultado;
-        // Tampoco toma la exclusión: con otra sincronización en curso responde enseguida, sin LOCK_TIMEOUT.
         try (SyncLockHolder otra = SyncLockHolder.hold(lock)) {
             resultado = useCase.triggerManualSync(SyncMode.NORMAL);
         }
 
-        assertThat(resultado).isEqualTo(new ManualSyncResult.ModeNotAvailable(SyncMode.NORMAL));
-        verifyNoInteractions(getSyncStatusUseCase, executeFullSyncUseCase, syncErrorRecorder);
+        assertThat(resultado).isEqualTo(new ManualSyncResult.OtherSyncInProgress());
+        verifyNoInteractions(getSyncStatusUseCase, incorporateChangesUseCase);
+        verify(syncErrorRecorder).record(eq(SyncErrorType.LOCK_TIMEOUT), contains("MANUAL"));
+    }
+
+    @Test
+    void enModoNormalSiNoSePuedeLeerLaVersionNoSeIntentaNada() {
+        when(getSyncStatusUseCase.getSyncStatus()).thenThrow(new DataAccessResourceFailureException("sin conexión"));
+
+        ManualSyncResult resultado = useCase.triggerManualSync(SyncMode.NORMAL);
+
+        assertThat(resultado).isEqualTo(
+            new ManualSyncResult.Failed(null, null, SyncErrorType.DATABASE_UNAVAILABLE, TriggerManualSyncUseCaseImpl.VERSION_UNREADABLE, 0)
+        );
+        verifyNoInteractions(incorporateChangesUseCase);
     }
 
     @Test
