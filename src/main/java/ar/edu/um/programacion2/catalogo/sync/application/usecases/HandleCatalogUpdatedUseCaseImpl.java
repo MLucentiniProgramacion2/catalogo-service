@@ -2,13 +2,12 @@ package ar.edu.um.programacion2.catalogo.sync.application.usecases;
 
 import ar.edu.um.programacion2.catalogo.sync.domain.model.CatalogEventResult;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.CatalogUpdateNotice;
-import ar.edu.um.programacion2.catalogo.sync.domain.model.FullSyncResult;
+import ar.edu.um.programacion2.catalogo.sync.domain.model.IncorporationResult;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncErrorType;
-import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncPath;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncTrigger;
-import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.ExecuteFullSyncUseCase;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.GetSyncStatusUseCase;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.HandleCatalogUpdatedUseCase;
+import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.IncorporateChangesUseCase;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.ProcessedEventRepository;
 import java.time.Clock;
 import java.util.Objects;
@@ -24,12 +23,13 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <li>La versión local se lee <strong>adentro</strong>: durante la espera otra sincronización pudo haberla cambiado.</li>
  * <li>Segunda barrera: si {@code newVersion} no supera a la versión local, no hay nada que aplicar. El {@code eventId} se
  * registra en una transacción corta propia (flujo 7a).</li>
- * <li>Si hace falta, {@link #catchUp} pone la copia al día y registra el {@code eventId} junto con los datos.</li>
+ * <li>Si hace falta, {@link #catchUp} pone la copia al día con {@link IncorporateChangesUseCase} (Redis: incremental o
+ * snapshot) y el {@code eventId} queda registrado junto con los datos.</li>
  * </ol>
- * 7a no escribe {@code sync_status}: no pasó nada que informar. Las escrituras que sí lo hacen pasan por CU-02 o por
- * {@link SyncErrorRecorder}, que leen y guardan en la misma transacción como pide {@code SyncStatusRepository}.
+ * El 7a de la segunda barrera no lee Redis ni escribe {@code sync_status}: el aviso ya no aporta nada. El "al día" que
+ * se descubre recién con la metadata sí escribe la versión remota (lo hace {@link IncorporateChangesUseCase}).
  * <p>
- * Las fallas de CU-02 vuelven como resultado. Una falla de la base en las barreras <strong>sale como excepción</strong>,
+ * Las fallas de CU-02, CU-04 y de la lectura de Redis vuelven como resultado. Una falla de la base en las barreras <strong>sale como excepción</strong>,
  * a propósito: la toma el manejador de errores del adaptador de Kafka, que reintenta con las esperas de DP-08. Si la base
  * vuelve en esos segundos el aviso se procesa; atrapándola acá habría un solo intento y se perdería hasta el próximo aviso.
  * <p>
@@ -45,7 +45,7 @@ public class HandleCatalogUpdatedUseCaseImpl implements HandleCatalogUpdatedUseC
 
     private final ProcessedEventRepository processedEventRepository;
     private final GetSyncStatusUseCase getSyncStatusUseCase;
-    private final ExecuteFullSyncUseCase executeFullSyncUseCase;
+    private final IncorporateChangesUseCase incorporateChangesUseCase;
     private final ExclusiveSync exclusiveSync;
     private final SyncErrorRecorder syncErrorRecorder;
     private final TransactionTemplate transactionTemplate;
@@ -87,19 +87,20 @@ public class HandleCatalogUpdatedUseCaseImpl implements HandleCatalogUpdatedUseC
     }
 
     /**
-     * <strong>Provisorio hasta CU-04.</strong> Sin Redis no se puede elegir el camino, así que siempre es un snapshot. CU-04
-     * reemplaza este método por la lectura de la metadata y la elección entre el incremental y el snapshot, sin tocar las
-     * barreras ni el adaptador de Kafka.
+     * CU-03 con Redis: la metadata, la versión remota y el camino (incremental o snapshot) los decide
+     * {@link IncorporateChangesUseCase}, que es el mismo para todos los disparadores. Acá solo se traduce su resultado al
+     * de un aviso.
      */
     private CatalogEventResult catchUp(CatalogUpdateNotice notice, Long localVersion) {
-        return switch (executeFullSyncUseCase.executeFullSync(SyncTrigger.KAFKA, notice)) {
-            case FullSyncResult.Applied applied -> new CatalogEventResult.Applied(
-                localVersion,
-                applied.snapshotVersion(),
-                SyncPath.SNAPSHOT,
+        return switch (incorporateChangesUseCase.incorporate(SyncTrigger.KAFKA, localVersion, notice)) {
+            case IncorporationResult.Applied applied -> new CatalogEventResult.Applied(
+                applied.localVersionBefore(),
+                applied.localVersionAfter(),
+                applied.path(),
                 applied.attempts()
             );
-            case FullSyncResult.Failed failed -> new CatalogEventResult.Failed(failed.errorType(), failed.description(), failed.attempts());
+            case IncorporationResult.UpToDate upToDate -> new CatalogEventResult.UpToDate(upToDate.localVersion(), notice.newVersion());
+            case IncorporationResult.Failed failed -> new CatalogEventResult.Failed(failed.errorType(), failed.description(), failed.attempts());
         };
     }
 }

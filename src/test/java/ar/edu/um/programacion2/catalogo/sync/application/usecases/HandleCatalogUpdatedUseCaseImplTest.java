@@ -16,13 +16,13 @@ import static org.mockito.Mockito.when;
 import ar.edu.um.programacion2.catalogo.sync.SyncLockHolder;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.CatalogEventResult;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.CatalogUpdateNotice;
-import ar.edu.um.programacion2.catalogo.sync.domain.model.FullSyncResult;
+import ar.edu.um.programacion2.catalogo.sync.domain.model.IncorporationResult;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.ProcessedEvent;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncErrorType;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncPath;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncStatus;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncTrigger;
-import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.ExecuteFullSyncUseCase;
+import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.IncorporateChangesUseCase;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.GetSyncStatusUseCase;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.ProcessedEventRepository;
 import ar.edu.um.programacion2.catalogo.sync.infrastructure.lock.InMemorySyncLock;
@@ -57,7 +57,7 @@ class HandleCatalogUpdatedUseCaseImplTest {
     private GetSyncStatusUseCase getSyncStatusUseCase;
 
     @Mock
-    private ExecuteFullSyncUseCase executeFullSyncUseCase;
+    private IncorporateChangesUseCase incorporateChangesUseCase;
 
     @Mock
     private SyncErrorRecorder syncErrorRecorder;
@@ -75,7 +75,7 @@ class HandleCatalogUpdatedUseCaseImplTest {
         useCase = new HandleCatalogUpdatedUseCaseImpl(
             processedEventRepository,
             getSyncStatusUseCase,
-            executeFullSyncUseCase,
+            incorporateChangesUseCase,
             new ExclusiveSync(lock, syncErrorRecorder),
             syncErrorRecorder,
             new TransactionTemplate(txManager),
@@ -84,21 +84,25 @@ class HandleCatalogUpdatedUseCaseImplTest {
     }
 
     @Test
-    void conUnaVersionNuevaEjecutaCu02ConElDisparadorKafkaYElAviso() {
+    void conUnaVersionNuevaIncorporaLosCambiosConElDisparadorKafkaYElAviso() {
         when(getSyncStatusUseCase.getSyncStatus()).thenReturn(estadoConVersion(12));
-        when(executeFullSyncUseCase.executeFullSync(SyncTrigger.KAFKA, AVISO)).thenReturn(new FullSyncResult.Applied(42, 2));
+        when(incorporateChangesUseCase.incorporate(SyncTrigger.KAFKA, 12L, AVISO)).thenReturn(
+            new IncorporationResult.Applied(12L, 42, SyncPath.INCREMENTAL, 2)
+        );
 
         CatalogEventResult resultado = useCase.handle(AVISO);
 
-        assertThat(resultado).isEqualTo(new CatalogEventResult.Applied(12L, 42, SyncPath.SNAPSHOT, 2));
+        assertThat(resultado).isEqualTo(new CatalogEventResult.Applied(12L, 42, SyncPath.INCREMENTAL, 2));
         verify(processedEventRepository, never()).registerIfAbsent(any());
         verifyNoInteractions(syncErrorRecorder);
     }
 
     @Test
-    void sinVersionLocalTambienEjecutaCu02() {
+    void sinVersionLocalTambienIncorporaLosCambios() {
         when(getSyncStatusUseCase.getSyncStatus()).thenReturn(SyncStatus.initial());
-        when(executeFullSyncUseCase.executeFullSync(SyncTrigger.KAFKA, AVISO)).thenReturn(new FullSyncResult.Applied(42, 1));
+        when(incorporateChangesUseCase.incorporate(SyncTrigger.KAFKA, null, AVISO)).thenReturn(
+            new IncorporationResult.Applied(null, 42, SyncPath.SNAPSHOT, 1)
+        );
 
         assertThat(useCase.handle(AVISO)).isEqualTo(new CatalogEventResult.Applied(null, 42, SyncPath.SNAPSHOT, 1));
     }
@@ -112,7 +116,7 @@ class HandleCatalogUpdatedUseCaseImplTest {
             assertThat(useCase.handle(AVISO)).isEqualTo(new CatalogEventResult.Duplicate(EVENTO));
         }
 
-        verifyNoInteractions(getSyncStatusUseCase, executeFullSyncUseCase, syncErrorRecorder);
+        verifyNoInteractions(getSyncStatusUseCase, incorporateChangesUseCase, syncErrorRecorder);
         verify(processedEventRepository, never()).registerIfAbsent(any());
     }
 
@@ -138,7 +142,7 @@ class HandleCatalogUpdatedUseCaseImplTest {
         CatalogEventResult resultado = useCase.handle(AVISO);
 
         assertThat(resultado).isEqualTo(new CatalogEventResult.UpToDate(41, 41));
-        verifyNoInteractions(executeFullSyncUseCase);
+        verifyNoInteractions(incorporateChangesUseCase);
         InOrder orden = inOrder(txManager, processedEventRepository);
         orden.verify(txManager).getTransaction(any());
         orden.verify(processedEventRepository).registerIfAbsent(new ProcessedEvent(EVENTO, 41, AHORA));
@@ -150,7 +154,7 @@ class HandleCatalogUpdatedUseCaseImplTest {
         when(getSyncStatusUseCase.getSyncStatus()).thenReturn(estadoConVersion(50));
 
         assertThat(useCase.handle(AVISO)).isEqualTo(new CatalogEventResult.UpToDate(50, 41));
-        verifyNoInteractions(executeFullSyncUseCase);
+        verifyNoInteractions(incorporateChangesUseCase);
     }
 
     @Test
@@ -159,9 +163,9 @@ class HandleCatalogUpdatedUseCaseImplTest {
             assertThat(lock.isHeld()).isTrue();
             return estadoConVersion(12);
         });
-        when(executeFullSyncUseCase.executeFullSync(SyncTrigger.KAFKA, AVISO)).thenAnswer(invocation -> {
+        when(incorporateChangesUseCase.incorporate(SyncTrigger.KAFKA, 12L, AVISO)).thenAnswer(invocation -> {
             assertThat(lock.isHeld()).isTrue();
-            return new FullSyncResult.Applied(42, 1);
+            return new IncorporationResult.Applied(12L, 42, SyncPath.INCREMENTAL, 1);
         });
 
         useCase.handle(AVISO);
@@ -176,22 +180,22 @@ class HandleCatalogUpdatedUseCaseImplTest {
         }
 
         verify(syncErrorRecorder).record(eq(SyncErrorType.LOCK_TIMEOUT), contains("KAFKA"));
-        verifyNoInteractions(getSyncStatusUseCase, executeFullSyncUseCase);
+        verifyNoInteractions(getSyncStatusUseCase, incorporateChangesUseCase);
         verify(processedEventRepository, never()).registerIfAbsent(any());
     }
 
     @Test
-    void siFallaCu02DevuelveElFalloYNoRegistraElEvento() {
+    void siFallaLaIncorporacionDevuelveElFalloYNoRegistraElEvento() {
         when(getSyncStatusUseCase.getSyncStatus()).thenReturn(estadoConVersion(12));
-        when(executeFullSyncUseCase.executeFullSync(SyncTrigger.KAFKA, AVISO)).thenReturn(
-            new FullSyncResult.Failed(SyncErrorType.CATEDRA_UNAVAILABLE, "La cátedra no estuvo disponible", 4)
+        when(incorporateChangesUseCase.incorporate(SyncTrigger.KAFKA, 12L, AVISO)).thenReturn(
+            new IncorporationResult.Failed(12L, 12L, SyncErrorType.CATEDRA_UNAVAILABLE, "La cátedra no estuvo disponible", 4)
         );
 
         CatalogEventResult resultado = useCase.handle(AVISO);
 
         assertThat(resultado).isEqualTo(new CatalogEventResult.Failed(SyncErrorType.CATEDRA_UNAVAILABLE, "La cátedra no estuvo disponible", 4));
         verify(processedEventRepository, never()).registerIfAbsent(any());
-        // Ya lo registró CU-02: acá no se registra dos veces.
+        // Ya lo registró quien falló: acá no se registra dos veces.
         verifyNoInteractions(syncErrorRecorder);
     }
 
@@ -201,7 +205,7 @@ class HandleCatalogUpdatedUseCaseImplTest {
 
         assertThatThrownBy(() -> useCase.handle(AVISO)).isInstanceOf(DataAccessResourceFailureException.class);
 
-        verifyNoInteractions(getSyncStatusUseCase, executeFullSyncUseCase);
+        verifyNoInteractions(getSyncStatusUseCase, incorporateChangesUseCase);
         assertThat(lock.isHeld()).isFalse();
     }
 
@@ -212,7 +216,7 @@ class HandleCatalogUpdatedUseCaseImplTest {
         assertThatThrownBy(() -> useCase.handle(AVISO)).isInstanceOf(DataAccessResourceFailureException.class);
 
         assertThat(lock.isHeld()).isFalse();
-        verifyNoInteractions(executeFullSyncUseCase);
+        verifyNoInteractions(incorporateChangesUseCase);
     }
 
     @Test
@@ -220,7 +224,7 @@ class HandleCatalogUpdatedUseCaseImplTest {
         assertThat(useCase.rejectInvalid()).isEqualTo(new CatalogEventResult.Invalid());
 
         verify(syncErrorRecorder, times(1)).record(SyncErrorType.INVALID_EVENT, HandleCatalogUpdatedUseCaseImpl.INVALID_EVENT_DESCRIPTION);
-        verifyNoInteractions(processedEventRepository, getSyncStatusUseCase, executeFullSyncUseCase);
+        verifyNoInteractions(processedEventRepository, getSyncStatusUseCase, incorporateChangesUseCase);
     }
 
     @Test
@@ -231,6 +235,14 @@ class HandleCatalogUpdatedUseCaseImplTest {
             SyncErrorType.EVENT_PROCESSING_FAILED,
             HandleCatalogUpdatedUseCaseImpl.UNEXPECTED_FAILURE_DESCRIPTION
         );
+    }
+
+    @Test
+    void siLaMetadataDiceQueEstaAlDiaDevuelveUpToDateConLaVersionDelAviso() {
+        when(getSyncStatusUseCase.getSyncStatus()).thenReturn(estadoConVersion(12));
+        when(incorporateChangesUseCase.incorporate(SyncTrigger.KAFKA, 12L, AVISO)).thenReturn(new IncorporationResult.UpToDate(12, 12, 1));
+
+        assertThat(useCase.handle(AVISO)).isEqualTo(new CatalogEventResult.UpToDate(12, 41));
     }
 
     private static SyncStatus estadoConVersion(long version) {

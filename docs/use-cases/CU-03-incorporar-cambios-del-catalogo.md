@@ -39,15 +39,19 @@ Cualquiera de estos cuatro, que comparten el mismo flujo:
 4. Se toma la **exclusión mutua** de sincronización, esperando como máximo el tiempo configurado
    (DP-09).
 5. Se lee la versión local.
-6. Se lee `catedra:sync:metadata` (`currentVersion`, `oldestAvailableVersion`). La versión
-   objetivo es `currentVersion` de Redis: Kafka solo notifica, los datos y la versión salen de
-   Redis.
+6. Si **no hay versión local**, se ejecuta directamente **CU-02** (paso 8) sin leer Redis: la regla
+   del camino ya decide un snapshot, y la primera copia viene por REST, así que un Redis caído no
+   puede impedirla. `remoteVersion` queda sin escribir hasta la próxima lectura de la metadata (el
+   próximo aviso). Si hay versión local, se lee `catedra:sync:metadata` (`currentVersion`,
+   `oldestAvailableVersion`) y se registra `currentVersion` como versión remota conocida, en una
+   transacción corta. La versión objetivo es `currentVersion` de Redis: Kafka solo notifica, los
+   datos y la versión salen de Redis.
 7. **Segunda barrera de idempotencia:** se compara la versión local con la objetivo (y, si el
    disparador es Kafka, con `newVersion`).
 8. Se decide el camino:
-   - si **no hay versión local**, o la versión local es **menor que `oldestAvailableVersion`**, o
-     falta alguna `catedra:sync:changes:{v}` entre la versión local + 1 y la objetivo, se ejecuta
-     **CU-02 Ejecutar la sincronización completa**;
+   - si **no hay versión local** (decidido en el paso 6, sin leer Redis), o la versión local es
+     **menor que `oldestAvailableVersion`**, o falta alguna `catedra:sync:changes:{v}` entre la
+     versión local + 1 y la objetivo, se ejecuta **CU-02 Ejecutar la sincronización completa**;
    - si no, se ejecuta **CU-04 Aplicar la sincronización incremental** desde la versión local + 1
      hasta la objetivo, en orden.
 9. *(Solo Kafka)* El `eventId` queda registrado como procesado **dentro de la transacción de la
