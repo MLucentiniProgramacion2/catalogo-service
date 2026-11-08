@@ -43,15 +43,15 @@ public class CatedraKafkaProperties {
     /**
      * {@code max.poll.interval.ms}: cuánto puede tardar una entrega antes de que Kafka saque al consumidor del grupo.
      * <p>
-     * Tiene que cubrir el peor caso, en el hilo del listener: 30 s de la primera barrera (Hikari) + 360 s de espera de la
-     * exclusión + 30 s de leer la versión + 297 s del peor caso de CU-02 + 7 s de las esperas entre reintentos del
-     * {@code DefaultErrorHandler} dan 724 s. Es una cota: cada reentrega pasa por {@code poll} y arranca un plazo nuevo,
-     * así que en una ventana cabe una sola espera (4 s como mucho, 721 s), pero esa espera sí cuenta dentro de la ventana.
-     * Si cambian esos tiempos o llega CU-04, hay que recalcularlo.
+     * Tiene que cubrir el peor caso, en el hilo del listener: 30 s de la primera barrera (Hikari) + 720 s de espera de la
+     * exclusión + 618 s del peor caso de CU-03 con Redis (ver {@code SyncProperties}) + 7 s de las esperas entre
+     * reintentos del {@code DefaultErrorHandler} dan 1375 s. Con 25 min (1500 s) sobran 125 s. Es una cota: cada
+     * reentrega pasa por {@code poll} y arranca un plazo nuevo, así que en una ventana cabe una sola espera, pero esa
+     * espera sí cuenta dentro de la ventana. Si cambian esos tiempos, hay que recalcularlo ({@code SyncWorstCase}).
      */
     @NotNull
     @DurationMin(millis = 1)
-    private Duration maxPollInterval = Duration.ofMinutes(15);
+    private Duration maxPollInterval = Duration.ofMinutes(25);
 
     /**
      * Cada cuánto se reintenta después de una falla de autorización. Sin esto, spring-kafka detiene el contenedor para

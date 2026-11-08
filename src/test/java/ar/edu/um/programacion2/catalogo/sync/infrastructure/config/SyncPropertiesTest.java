@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import java.time.Duration;
+import ar.edu.um.programacion2.catalogo.sync.SyncWorstCase;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -14,11 +15,15 @@ class SyncPropertiesTest {
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     @Test
-    void laEsperaPorDefectoCubreElPeorCasoDeLaSincronizacionCompleta() {
-        // 4 × (5 s + 30 s + 30 s) + 7 s de reintentos + 30 s para registrar el error (DP-08 y DP-09).
-        Duration peorCaso = Duration.ofSeconds(4 * (5 + 30 + 30) + 7 + 30);
+    void laEsperaPorDefectoCubreElPeorCasoDeCu03ConRedis() {
+        SyncWorstCase peor = new SyncWorstCase();
 
-        assertThat(new SyncProperties().getLock().getWaitTimeout()).isEqualTo(Duration.ofMinutes(6)).isGreaterThan(peorCaso);
+        // Las piezas, para que un cambio de configuración se vea en cuál: Redis 5 + 3 × 3 s, Hikari 30 s, CU-02 297 s.
+        assertThat(peor.redisAttempt()).isEqualTo(Duration.ofSeconds(14));
+        assertThat(peor.hikari()).isEqualTo(Duration.ofSeconds(30));
+        assertThat(peor.fullSync()).isEqualTo(Duration.ofSeconds(297));
+        assertThat(peor.incorporateChanges()).isEqualTo(Duration.ofSeconds(618));
+        assertThat(new SyncProperties().getLock().getWaitTimeout()).isEqualTo(Duration.ofMinutes(12)).isGreaterThan(peor.incorporateChanges());
     }
 
     @ParameterizedTest

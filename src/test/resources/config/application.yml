@@ -120,7 +120,7 @@ sync:
     # las verifican los unitarios del caso de uso, sin dormir.
     delays: 10ms,20ms,40ms
   lock:
-    # Corta para que los tests que dejan vencer la espera no duerman 6 min. La de verdad la fija
+    # Corta para que los tests que dejan vencer la espera no duerman 12 min. La de verdad la fija
     # SyncPropertiesTest.
     wait-timeout: 200ms
 
