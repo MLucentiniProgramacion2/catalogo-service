@@ -34,7 +34,9 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -293,6 +295,21 @@ class FullSyncIT {
                 cuts.incrementAndGet();
             }
             delegate.replaceAll(categories, professionals, weeklySchedules);
+        }
+
+        @Override
+        public void saveAll(List<ProfessionalCategory> categories, List<Professional> professionals, List<WeeklySchedule> weeklySchedules) {
+            delegate.saveAll(categories, professionals, weeklySchedules);
+        }
+
+        @Override
+        public Set<Long> findExistingCategoryIds(Collection<Long> ids) {
+            return delegate.findExistingCategoryIds(ids);
+        }
+
+        @Override
+        public Set<Long> findExistingProfessionalIds(Collection<Long> ids) {
+            return delegate.findExistingProfessionalIds(ids);
         }
 
         @Override

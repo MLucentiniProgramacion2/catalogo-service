@@ -1,10 +1,12 @@
 package ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.repository;
 
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.entity.ProfessionalCategoryEntity;
+import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -16,6 +18,10 @@ public interface JpaProfessionalCategoryRepository extends JpaRepository<Profess
      * manda antes lo pendiente (de cualquier tabla) y {@code clearAutomatically} vacía el contexto después, para que no
      * quede administrada una entidad borrada con el mismo ID que otra que se va a insertar.
      */
+    /** Cuáles de esos IDs existen, en una consulta y sin cargar las filas. */
+    @Query("select e.id from ProfessionalCategoryEntity e where e.id in :ids")
+    List<Long> findExistingIds(@Param("ids") Collection<Long> ids);
+
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("delete from ProfessionalCategoryEntity")
     int deleteAllRows();
