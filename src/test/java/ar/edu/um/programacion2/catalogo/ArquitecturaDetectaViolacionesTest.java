@@ -16,8 +16,10 @@ import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.FeatureQueUsa
 import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.FeatureQueUsaDomainDeJHipster;
 import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.FeatureQueUsaOtraFeature;
 import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.FeatureQueUsaWebDeJHipster;
+import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.messaging.MessagingQueUsaCatedra;
 import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.messaging.MessagingQueUsaPersistence;
 import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.web.WebQueUsaPersistence;
+import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.web.WebQueUsaRedis;
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
@@ -77,11 +79,13 @@ class ArquitecturaDetectaViolacionesTest {
     }
 
     @Test
-    void adaptadoresDeEntradaNoDependenDePersistenceDetectaWebYMessaging() {
+    void adaptadoresDeEntradaNoDependenDeAdaptadoresDeSalidaDetectaPersistenceRedisYCatedra() {
         // El controller de ejemplo también está en infrastructure.web y no se marca: llama al service, no a persistence.
         assertThat(
-            clasesQueViolan(HexagonalArchitectureTest.adaptadoresDeEntradaNoDependenDePersistence, EJEMPLO)
-        ).containsExactlyInAnyOrder(nombres(WebQueUsaPersistence.class, MessagingQueUsaPersistence.class));
+            clasesQueViolan(HexagonalArchitectureTest.adaptadoresDeEntradaNoDependenDeAdaptadoresDeSalida, EJEMPLO)
+        ).containsExactlyInAnyOrder(
+            nombres(WebQueUsaPersistence.class, MessagingQueUsaPersistence.class, WebQueUsaRedis.class, MessagingQueUsaCatedra.class)
+        );
     }
 
     @Test
