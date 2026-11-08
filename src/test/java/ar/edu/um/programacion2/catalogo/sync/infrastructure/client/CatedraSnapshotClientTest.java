@@ -226,7 +226,15 @@ class CatedraSnapshotClientTest {
             Arguments.of("hora inválida", modify(root -> item(root, "weeklySchedules", 1).put("startTime", "25:00")), "startTime"),
             Arguments.of("hora con otro formato", modify(root -> item(root, "weeklySchedules", 1).put("endTime", "6 PM")), "endTime"),
             Arguments.of("instante inválido", modify(root -> item(root, "professionals", 0).put("createdAt", "2026-07-01")), "createdAt"),
-            Arguments.of("elemento nulo", modify(root -> ((ArrayNode) root.get("weeklySchedules")).addNull()), "nulo")
+            Arguments.of("elemento nulo", modify(root -> ((ArrayNode) root.get("weeklySchedules")).addNull()), "nulo"),
+            // Con ACCEPT_FLOAT_AS_INT prendido, Jackson los truncaba en silencio: 7.5 se aplicaba como la versión 7.
+            Arguments.of("versión con decimales", modify(root -> root.put("snapshotVersion", 7.5)), "JSON"),
+            Arguments.of("id con decimales", modify(root -> item(root, "professionals", 0).put("id", 15.5)), "JSON"),
+            Arguments.of(
+                "slotDurationMinutes con decimales",
+                modify(root -> item(root, "weeklySchedules", 0).put("slotDurationMinutes", 30.5)),
+                "JSON"
+            )
         );
     }
 
