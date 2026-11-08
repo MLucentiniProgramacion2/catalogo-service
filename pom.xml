@@ -120,6 +120,20 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-kafka</artifactId>
         </dependency>
+        <!--
+            Redis de la cátedra (ADR 0006): Spring Data Redis y Lettuce sueltos, con las versiones del BOM de
+            Spring Boot, y sin spring-boot-starter-data-redis. La autoconfiguración de ese starter abre una
+            conexión a localhost:6379, activa repositorios de Redis y agrega un health indicator que usa INFO,
+            un comando que la ACL de la cátedra niega.
+        -->
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-liquibase</artifactId>

@@ -233,6 +233,15 @@ catedra:
     bootstrap-servers: ${CATEDRA_KAFKA_BOOTSTRAP_SERVERS:}
     catalog-topic: ${CATEDRA_KAFKA_CATALOG_TOPIC:}
     consumer-group: ${CATEDRA_KAFKA_CONSUMER_GROUP:}
+  # Redis de la cátedra, solo lectura (contrato §14, ADR 0006). Ver CatedraRedisProperties: el cliente
+  # se arma en Java y spring.data.redis.* no se usa. Sin valor por defecto, como el token.
+  redis:
+    host: ${CATEDRA_REDIS_HOST:}
+    port: ${CATEDRA_REDIS_PORT:}
+    username: ${CATEDRA_REDIS_USERNAME:}
+    password: ${CATEDRA_REDIS_PASSWORD:}
+    connect-timeout: ${CATEDRA_REDIS_CONNECT_TIMEOUT:5s}
+    command-timeout: ${CATEDRA_REDIS_COMMAND_TIMEOUT:3s}
 
 sync:
   startup:

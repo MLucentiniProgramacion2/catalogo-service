@@ -102,6 +102,13 @@ catedra:
     catalog-topic: topic-de-test
     consumer-group: grupo-de-test
     listener-enabled: false
+  redis:
+    # Solo para tests: valores falsos. La conexión se abre recién con la primera lectura, así que
+    # ningún contexto se conecta; los tests de Redis usan un contenedor (RedisTestServer).
+    host: localhost
+    port: 1
+    username: usuario-falso-solo-para-tests
+    password: clave-falsa-solo-para-tests
 
 sync:
   startup:
