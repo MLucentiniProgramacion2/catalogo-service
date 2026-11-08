@@ -5,6 +5,7 @@ import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.CatalogSnapshotPro
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.InvalidSnapshotException;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SnapshotAccessDeniedException;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SnapshotSourceUnavailableException;
+import ar.edu.um.programacion2.catalogo.sync.infrastructure.catedra.CatedraJson;
 import ar.edu.um.programacion2.catalogo.sync.infrastructure.client.SnapshotResponse.ProblemResponse;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;
@@ -41,8 +42,8 @@ public class CatedraSnapshotClient implements CatalogSnapshotProvider {
     /** Lo que se lee del cuerpo de un error para buscar el {@code code}: alcanza para un problem+json. */
     private static final int MAX_ERROR_BODY_BYTES = 8 * 1024;
 
-    /** Mapper propio: el resultado no depende de la configuración global de Jackson ({@code spring.jackson.*}). */
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    /** El de los datos de la cátedra: no depende de la configuración global de Jackson ({@code spring.jackson.*}). */
+    private static final JsonMapper JSON = CatedraJson.MAPPER;
 
     private final RestClient catedraRestClient;
 
