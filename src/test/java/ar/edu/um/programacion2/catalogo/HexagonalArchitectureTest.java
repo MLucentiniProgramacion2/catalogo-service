@@ -59,16 +59,24 @@ class HexagonalArchitectureTest {
     static final String FEATURE_WEB = "ar.edu.um.programacion2.catalogo.*.infrastructure.web..";
     static final String FEATURE_MESSAGING = "ar.edu.um.programacion2.catalogo.*.infrastructure.messaging..";
     static final String FEATURE_PERSISTENCE = "ar.edu.um.programacion2.catalogo.*.infrastructure.persistence..";
+    static final String FEATURE_REDIS = "ar.edu.um.programacion2.catalogo.*.infrastructure.redis..";
+    static final String FEATURE_CATEDRA = "ar.edu.um.programacion2.catalogo.*.infrastructure.catedra..";
 
-    // De cualquier feature a cualquier feature: un controller de catalog tampoco puede usar la persistencia de sync.
+    /**
+     * De cualquier feature a cualquier feature: un controller de catalog tampoco puede usar la persistencia de sync. Cubre
+     * los adaptadores de salida a la base y a Redis, y las reglas de formato de la cátedra que comparten los de salida
+     * ({@code infrastructure.catedra}, issue #33).
+     */
     @ArchTest
-    static final ArchRule adaptadoresDeEntradaNoDependenDePersistence = noClasses()
+    static final ArchRule adaptadoresDeEntradaNoDependenDeAdaptadoresDeSalida = noClasses()
         .that()
         .resideInAnyPackage(FEATURE_WEB, FEATURE_MESSAGING)
         .should()
         .dependOnClassesThat()
-        .resideInAPackage(FEATURE_PERSISTENCE)
-        .because("los adaptadores de entrada llaman al XxxService; las entidades y repositorios JPA no salen de persistence")
+        .resideInAnyPackage(FEATURE_PERSISTENCE, FEATURE_REDIS, FEATURE_CATEDRA)
+        .because(
+            "los adaptadores de entrada llaman al XxxService; las entidades, los repositorios, el cliente de Redis y los DTO de la cátedra no salen de sus paquetes"
+        )
         .allowEmptyShould(true);
 
     /**

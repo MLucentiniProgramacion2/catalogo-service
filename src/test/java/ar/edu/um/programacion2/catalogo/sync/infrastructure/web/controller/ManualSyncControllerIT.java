@@ -137,7 +137,7 @@ class ManualSyncControllerIT {
             .andExpect(jsonPath("$.attempts").value(1))
             .andExpect(jsonPath("$.path").value(RUTA))
             .andExpect(jsonPath("$.type").value(TIPO_PROBLEMA))
-            .andExpect(jsonPath("$.detail").value(containsString("La cátedra rechazó la credencial técnica")))
+            .andExpect(jsonPath("$.detail").value(containsString("La API REST de la cátedra rechazó la credencial técnica")))
             .andExpect(content().string(not(containsString("Exception"))));
     }
 
@@ -167,17 +167,35 @@ class ManualSyncControllerIT {
         assertThat(estado().getLastErrorType()).isEqualTo(SyncErrorType.LOCK_TIMEOUT);
     }
 
+    /**
+     * El modo normal es el de por defecto, y ya no responde 501: corre CU-03. En este contexto Redis apunta a un puerto
+     * donde nadie escucha ({@code src/test}), así que la lectura de la metadata falla en los 4 intentos.
+     */
     @ParameterizedTest
     @ValueSource(strings = { RUTA, RUTA + "?mode=", RUTA + "?mode=NORMAL" })
-    void elModoNormalEsElPorDefectoYTodaviaNoEstaDisponible(String url) throws Exception {
+    void elModoNormalEsElPorDefectoYConRedisCaidoResponde502ConRedisUnavailable(String url) throws Exception {
+        versionLocal(3);
+
         pedir(url, token("ROLE_ADMIN"))
-            .andExpect(status().isNotImplemented())
+            .andExpect(status().isBadGateway())
             .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-            .andExpect(jsonPath("$.code").value(SyncErrorResponses.SYNC_MODE_NOT_AVAILABLE))
-            .andExpect(jsonPath("$.detail").value("El modo NORMAL todavía no está disponible"));
+            .andExpect(jsonPath("$.code").value(SyncErrorResponses.SYNC_FAILED))
+            .andExpect(jsonPath("$.errorType").value("REDIS_UNAVAILABLE"))
+            .andExpect(jsonPath("$.localVersionBefore").value(3))
+            .andExpect(jsonPath("$.localVersionAfter").value(3))
+            .andExpect(jsonPath("$.attempts").value(4))
+            .andExpect(
+                jsonPath("$.detail").value(
+                    "Redis de la cátedra no respondió al leer la metadata después de 4 intentos: no se aplicó ningún cambio"
+                )
+            )
+            .andExpect(content().string(not(containsString("localhost"))))
+            .andExpect(content().string(not(containsString("Exception"))));
 
         verifyNoInteractions(catalogSnapshotProvider);
-        assertThat(estado().getLastErrorType()).isNull();
+        SyncStatus estado = estado();
+        assertThat(estado.getLocalVersion()).isEqualTo(3L);
+        assertThat(estado.getLastErrorType()).isEqualTo(SyncErrorType.REDIS_UNAVAILABLE);
     }
 
     @ParameterizedTest

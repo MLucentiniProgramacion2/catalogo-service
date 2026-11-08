@@ -81,13 +81,13 @@ class StartupFullSyncFailureIT {
         assertThat(estado.hasLocalCopy()).isFalse();
         assertThat(estado.getLastErrorType()).isEqualTo(SyncErrorType.INVALID_CREDENTIALS);
         assertThat(estado.getLastErrorDescription())
-            .isEqualTo("La cátedra rechazó la credencial técnica: La cátedra respondió 401 (code=UNAUTHORIZED) al pedir el snapshot")
+            .isEqualTo("La API REST de la cátedra rechazó la credencial técnica: La cátedra respondió 401 (code=UNAUTHORIZED) al pedir el snapshot")
             .doesNotContain(TOKEN);
         assertThat(SyncTestDatabase.categoryIds(transactionTemplate, em)).isEmpty();
 
         // La captura funciona (está la línea del error) y el token no aparece en ninguna parte de la salida.
         assertThat(salida.getAll())
-            .contains("Sincronización completa (STARTUP) fallida: La cátedra rechazó la credencial técnica")
+            .contains("Sincronización completa (STARTUP) fallida: La API REST de la cátedra rechazó la credencial técnica")
             .doesNotContain(TOKEN);
     }
 

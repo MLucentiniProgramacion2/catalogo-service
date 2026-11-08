@@ -191,7 +191,7 @@ public class ExecuteFullSyncUseCaseImpl implements ExecuteFullSyncUseCase {
                 );
                 case SnapshotAccessDeniedException e -> Failure.definitive(
                     SyncErrorType.INVALID_CREDENTIALS,
-                    "La cátedra rechazó la credencial técnica",
+                    "La API REST de la cátedra rechazó la credencial técnica",
                     e.getMessage(),
                     null
                 );

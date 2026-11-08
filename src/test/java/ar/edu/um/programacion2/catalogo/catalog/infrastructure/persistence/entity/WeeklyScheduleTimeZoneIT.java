@@ -107,6 +107,30 @@ class WeeklyScheduleTimeZoneIT {
         assertThat(atiende(null, LocalTime.of(18, 0))).as("hasta las 18").isFalse();
     }
 
+    /** El camino del incremental (CU-04): crear y después actualizar con {@code saveAll}, que hace {@code merge}. */
+    @Test
+    void crearOActualizarHorariosTambienGuardaLasHorasSinConvertir() {
+        guardar(horario(10, DayOfWeek.MONDAY, "18:00", "21:00"));
+
+        transactionTemplate.executeWithoutResult(tx ->
+            catalogRepository.saveAll(
+                List.of(),
+                List.of(),
+                List.of(horario(10, DayOfWeek.MONDAY, "19:30", "22:00"), horario(11, DayOfWeek.TUESDAY, "22:00", "02:00"))
+            )
+        );
+
+        List<String> guardadas = transactionTemplate.execute(tx ->
+            em
+                .createNativeQuery("select start_time::text || '-' || end_time::text from weekly_schedule order by id", String.class)
+                .getResultList()
+                .stream()
+                .map(String.class::cast)
+                .toList()
+        );
+        assertThat(guardadas).containsExactly("19:30:00-22:00:00", "22:00:00-02:00:00");
+    }
+
     private boolean atiende(LocalTime desde, LocalTime hasta) {
         return !transactionTemplate
             .execute(tx ->

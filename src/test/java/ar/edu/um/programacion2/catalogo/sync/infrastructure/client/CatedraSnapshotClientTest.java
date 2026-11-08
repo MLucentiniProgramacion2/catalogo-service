@@ -37,7 +37,15 @@ import tools.jackson.databind.node.ObjectNode;
 class CatedraSnapshotClientTest {
 
     private static final String TOKEN = "token-de-prueba-9f8e7d";
-    private static final Duration READ_TIMEOUT = Duration.ofMillis(300);
+    /**
+     * Plazo de los tests que esperan a que venza: corto, para que no tarden. Con el cliente del JDK es un plazo total, así
+     * que no sirve para los demás: el primer pedido de la clase va con la JVM en frío y, con la suite entera cargando la
+     * máquina, a veces no llegaba en 300 ms (falló 1 de 2 corridas en develop).
+     */
+    private static final Duration SHORT_READ_TIMEOUT = Duration.ofMillis(300);
+
+    /** Plazo de los tests en los que la cátedra responde: holgado, porque acá el tiempo no es lo que se prueba. */
+    private static final Duration READ_TIMEOUT = Duration.ofSeconds(10);
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     /** Snapshot del contrato §7 con un profesional deshabilitado, los dos formatos de hora y campos que no conocemos. */
@@ -181,7 +189,7 @@ class CatedraSnapshotClientTest {
         catedra.hangBeforeResponding();
 
         long start = System.nanoTime();
-        fetchExpecting(SnapshotSourceUnavailableException.class);
+        fetchExpecting(client(catedra.baseUrl(), SHORT_READ_TIMEOUT), SnapshotSourceUnavailableException.class);
 
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(2));
     }
@@ -191,7 +199,7 @@ class CatedraSnapshotClientTest {
         catedra.hangInTheMiddleOfTheBody(VALID_SNAPSHOT);
 
         long start = System.nanoTime();
-        fetchExpecting(SnapshotSourceUnavailableException.class);
+        fetchExpecting(client(catedra.baseUrl(), SHORT_READ_TIMEOUT), SnapshotSourceUnavailableException.class);
 
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(2));
     }
@@ -218,7 +226,15 @@ class CatedraSnapshotClientTest {
             Arguments.of("hora inválida", modify(root -> item(root, "weeklySchedules", 1).put("startTime", "25:00")), "startTime"),
             Arguments.of("hora con otro formato", modify(root -> item(root, "weeklySchedules", 1).put("endTime", "6 PM")), "endTime"),
             Arguments.of("instante inválido", modify(root -> item(root, "professionals", 0).put("createdAt", "2026-07-01")), "createdAt"),
-            Arguments.of("elemento nulo", modify(root -> ((ArrayNode) root.get("weeklySchedules")).addNull()), "nulo")
+            Arguments.of("elemento nulo", modify(root -> ((ArrayNode) root.get("weeklySchedules")).addNull()), "nulo"),
+            // Con ACCEPT_FLOAT_AS_INT prendido, Jackson los truncaba en silencio: 7.5 se aplicaba como la versión 7.
+            Arguments.of("versión con decimales", modify(root -> root.put("snapshotVersion", 7.5)), "JSON"),
+            Arguments.of("id con decimales", modify(root -> item(root, "professionals", 0).put("id", 15.5)), "JSON"),
+            Arguments.of(
+                "slotDurationMinutes con decimales",
+                modify(root -> item(root, "weeklySchedules", 0).put("slotDurationMinutes", 30.5)),
+                "JSON"
+            )
         );
     }
 
@@ -254,11 +270,15 @@ class CatedraSnapshotClientTest {
     }
 
     private static CatedraSnapshotClient client(URI baseUrl) {
+        return client(baseUrl, READ_TIMEOUT);
+    }
+
+    private static CatedraSnapshotClient client(URI baseUrl, Duration readTimeout) {
         CatedraApiProperties properties = new CatedraApiProperties();
         properties.setUrl(baseUrl);
         properties.setToken(TOKEN);
         properties.setConnectTimeout(Duration.ofSeconds(1));
-        properties.setReadTimeout(READ_TIMEOUT);
+        properties.setReadTimeout(readTimeout);
         return new CatedraSnapshotClient(new CatedraClientConfiguration().catedraRestClient(properties));
     }
 

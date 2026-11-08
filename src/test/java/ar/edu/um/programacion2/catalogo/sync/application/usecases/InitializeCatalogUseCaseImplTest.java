@@ -71,7 +71,7 @@ class InitializeCatalogUseCaseImplTest {
     void siLaSincronizacionCompletaFallaTerminaSinExcepcion() {
         when(getSyncStatusUseCase.getSyncStatus()).thenReturn(SyncStatus.initial());
         when(executeFullSyncUseCase.executeFullSync(SyncTrigger.STARTUP)).thenReturn(
-            new FullSyncResult.Failed(SyncErrorType.INVALID_CREDENTIALS, "La cátedra rechazó la credencial técnica", 1)
+            new FullSyncResult.Failed(SyncErrorType.INVALID_CREDENTIALS, "La API REST de la cátedra rechazó la credencial técnica", 1)
         );
 
         assertThatCode(useCase::initializeCatalog).doesNotThrowAnyException();

@@ -18,8 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
  * Lo protege la regla de {@code /api/admin/**} de {@code SecurityConfiguration}: sin token o con uno inválido, 401; sin
  * {@code ROLE_ADMIN}, o con el token técnico de servicio, 403 (DP-05 y DP-06).
  * <p>
- * Es sincrónico: CU-08 "responde con el resultado", así que el pedido dura lo que la sincronización, y en el peor caso
- * unos 11 min (6 de espera y 5 de ejecución). Si el cliente corta, la sincronización sigue y el resultado queda en CU-09.
+ * Es sincrónico: CU-08 "responde con el resultado", así que el pedido dura lo que la sincronización: en el peor caso, la
+ * espera de la exclusión más el peor caso de CU-03 (ver {@code SyncProperties}). Si el cliente corta, la sincronización
+ * sigue y el resultado queda en CU-09.
  * <p>
  * {@code mode} es un único parámetro, validado como el de CU-06: un valor que no es del enum, incluidas las minúsculas,
  * da 400 por {@code ExceptionTranslator.handleTypeMismatch}, sin repetir el valor recibido. Sin él, o vacío, es
@@ -39,7 +40,7 @@ public class ManualSyncController {
             case ManualSyncResult.Applied applied -> ResponseEntity.ok(syncDtoMapper.toResponse(mode, applied));
             case ManualSyncResult.Failed failed -> throw SyncErrorResponses.failed(failed);
             case ManualSyncResult.OtherSyncInProgress inProgress -> throw SyncErrorResponses.inProgress();
-            case ManualSyncResult.ModeNotAvailable notAvailable -> throw SyncErrorResponses.modeNotAvailable(notAvailable);
+            case ManualSyncResult.UpToDate upToDate -> ResponseEntity.ok(syncDtoMapper.toResponse(mode, upToDate));
         };
     }
 }

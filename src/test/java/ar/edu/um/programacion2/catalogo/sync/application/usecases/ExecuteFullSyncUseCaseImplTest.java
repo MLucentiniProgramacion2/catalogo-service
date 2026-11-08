@@ -278,7 +278,7 @@ class ExecuteFullSyncUseCaseImplTest {
             Arguments.of(
                 new SnapshotAccessDeniedException("La cátedra respondió 401 (sin code) al pedir el snapshot"),
                 SyncErrorType.INVALID_CREDENTIALS,
-                "La cátedra rechazó la credencial técnica: La cátedra respondió 401 (sin code) al pedir el snapshot"
+                "La API REST de la cátedra rechazó la credencial técnica: La cátedra respondió 401 (sin code) al pedir el snapshot"
             ),
             Arguments.of(
                 new InvalidSnapshotException("Snapshot inválido: El horario 21 tiene un startTime inválido: '25:00'"),

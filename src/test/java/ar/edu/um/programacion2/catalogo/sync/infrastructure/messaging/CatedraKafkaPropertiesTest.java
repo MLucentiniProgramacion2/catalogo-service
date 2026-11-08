@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.stream.Stream;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import ar.edu.um.programacion2.catalogo.sync.SyncWorstCase;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -92,7 +93,7 @@ class CatedraKafkaPropertiesTest {
                     .containsEntry(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
                     .containsEntry(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false)
                     .containsEntry(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 1)
-                    .containsEntry(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 900_000)
+                    .containsEntry(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 1_500_000)
                     .containsEntry(ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG, false);
             });
     }
@@ -113,18 +114,14 @@ class CatedraKafkaPropertiesTest {
 
     @Test
     void elIntervaloDePollCubreElPeorCasoDeUnaEntrega() {
-        // Con los plazos reales, no con los de src/test. Mismos números que CatedraKafkaProperties y que el ADR 0005.
-        SyncProperties sync = new SyncProperties();
-        long hikari = 30;
-        long esperaExclusion = sync.getLock().getWaitTimeout().toSeconds();
-        long peorCasoCu02 = 4 * (5 + 30 + 30) + 7 + 30;
-        long esperasDelManejador = sync.getRetry().getDelays().stream().mapToLong(Duration::toSeconds).sum();
-        assertThat(esperasDelManejador).isEqualTo(7);
+        // Con los valores reales, no con los de src/test: primera barrera + espera de la exclusión + CU-03 + esperas del
+        // manejador. Los mismos números que CatedraKafkaProperties y que el ADR 0005.
+        SyncWorstCase peor = new SyncWorstCase();
+        assertThat(peor.retryDelays()).isEqualTo(Duration.ofSeconds(7));
+        assertThat(peor.lockWait()).isEqualTo(Duration.ofMinutes(12));
 
-        Duration peorCaso = Duration.ofSeconds(hikari + esperaExclusion + hikari + peorCasoCu02 + esperasDelManejador);
-
-        assertThat(peorCaso).isEqualTo(Duration.ofSeconds(724));
-        assertThat(new CatedraKafkaProperties().getMaxPollInterval()).isEqualTo(Duration.ofMinutes(15)).isGreaterThan(peorCaso);
+        assertThat(peor.kafkaDelivery()).isEqualTo(Duration.ofSeconds(1375));
+        assertThat(new CatedraKafkaProperties().getMaxPollInterval()).isEqualTo(Duration.ofMinutes(25)).isGreaterThan(peor.kafkaDelivery());
     }
 
     @Test

@@ -109,9 +109,26 @@ flowchart LR
 | DP-05 | Estado de sincronización: `ROLE_USER` o `ROLE_ADMIN`. Sincronización manual: solo `ROLE_ADMIN`. | CU-08, CU-09 |
 | DP-06 | Turnos usa un JWT técnico de servicio con `aud=catalogo-service`, `iss=turnos-service` y `ROLE_SERVICE` (DPT-16 de turnos); el endpoint de agenda exige los tres como regla de autorización, no de la validación general del token, y si falta uno responde `403`; `X-User-Login` solo para trazabilidad; los endpoints de usuario rechazan el token técnico. | CU-05 a CU-09 |
 | DP-07 | `eventId` procesados en una tabla de PostgreSQL (`processed_event`: `eventId`, `newVersion` del evento y fecha de procesamiento), en la misma transacción que los cambios; la comparación de versiones es una segunda barrera. El registro es "insertar si no existe": un `eventId` repetido no deshace la transacción. | CU-03, CU-04 |
-| DP-08 | Timeouts configurables, hasta 3 reintentos con backoff de 1 s, 2 s y 4 s; si se agotan, rollback de la versión en curso, se conservan las versiones completas, el `eventId` no se registra, se registra el error y se commitea el offset. Lo inesperado en el listener de Kafka se reintenta con las mismas esperas y termina igual, aunque no se pueda registrar el error ([ADR 0005](../adr/0005-consumidor-kafka.md)). | CU-02, CU-03, CU-04 |
-| DP-09 | Una sola incorporación de cambios a la vez; los demás disparadores esperan hasta un máximo configurable (`sync.lock.wait-timeout`, 6 min por defecto) y, si se supera, terminan sin cambios y lo registran como `LOCK_TIMEOUT`. | CU-01, CU-03, CU-04, CU-08 |
+| DP-08 | Timeouts configurables, hasta 3 reintentos con backoff de 1 s, 2 s y 4 s; si se agotan, rollback de la versión en curso, se conservan las versiones completas, el `eventId` no se registra, se registra el error y se commitea el offset. Lo inesperado en el listener de Kafka se reintenta con las mismas esperas y termina igual, aunque no se pueda registrar el error ([ADR 0005](../adr/0005-consumidor-kafka.md)). Con Redis (#33), el presupuesto de 3 reintentos es por tramo y no por paso: la lectura previa de CU-03 (metadata, versión remota y cambios), el lote entero de CU-04 y CU-02 tienen uno cada uno, y un reintento repite solo el paso que falló. Redis: 5 s de conexión y 3 s por comando ([ADR 0006](../adr/0006-cliente-redis.md)). | CU-02, CU-03, CU-04 |
+| DP-09 | Una sola incorporación de cambios a la vez; los demás disparadores esperan hasta un máximo configurable (`sync.lock.wait-timeout`, 12 min por defecto) y, si se supera, terminan sin cambios y lo registran como `LOCK_TIMEOUT`. Los 12 min cubren el peor caso de CU-03 con Redis, 618 s (tabla abajo), que tiene cota gracias al plazo del lote de CU-04 (`sync.incremental.time-budget`, 60 s). Por eso CU-08, que es sincrónico, puede tardar hasta unos 22 min. | CU-01, CU-03, CU-04, CU-08 |
 | DP-10 | La sincronización manual corre la lógica de CU-03 por defecto y puede forzar un snapshot con un parámetro explícito. | CU-08 |
+
+### Peor caso de CU-03 con la exclusión tomada (DP-09)
+
+| Tramo | s |
+| --- | --- |
+| Leer la versión local (Hikari) | 30 |
+| Metadata (14) + `remoteVersion` (30) + cambios (14) | 58 |
+| 3 reintentos de la lectura previa (hasta 30 cada uno) + esperas | 97 |
+| CU-04 hasta el plazo del lote | 60 |
+| La versión en curso al vencer el plazo (espera de 4 + 3 × 14 + 30) | 76 |
+| CU-02 después (ya incluye registrar su error) | 297 |
+| **Total** | **618** |
+
+Un intento contra Redis son 14 s (5 de conexión y 3 por cada comando del saludo y del pedido). Con 12
+min de espera sobran 102 s. `SyncWorstCase` arma esta cuenta en los tests con los valores reales de
+la configuración: si cambia un timeout, el test lo nota. El `max.poll.interval.ms` de Kafka (25 min)
+sale de la misma cuenta ([ADR 0005](../adr/0005-consumidor-kafka.md)).
 
 ## Mejoras futuras
 

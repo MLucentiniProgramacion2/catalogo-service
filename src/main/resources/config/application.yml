@@ -233,6 +233,15 @@ catedra:
     bootstrap-servers: ${CATEDRA_KAFKA_BOOTSTRAP_SERVERS:}
     catalog-topic: ${CATEDRA_KAFKA_CATALOG_TOPIC:}
     consumer-group: ${CATEDRA_KAFKA_CONSUMER_GROUP:}
+  # Redis de la cátedra, solo lectura (contrato §14, ADR 0006). Ver CatedraRedisProperties: el cliente
+  # se arma en Java y spring.data.redis.* no se usa. Sin valor por defecto, como el token.
+  redis:
+    host: ${CATEDRA_REDIS_HOST:}
+    port: ${CATEDRA_REDIS_PORT:}
+    username: ${CATEDRA_REDIS_USERNAME:}
+    password: ${CATEDRA_REDIS_PASSWORD:}
+    connect-timeout: ${CATEDRA_REDIS_CONNECT_TIMEOUT:5s}
+    command-timeout: ${CATEDRA_REDIS_COMMAND_TIMEOUT:3s}
 
 sync:
   startup:
@@ -244,8 +253,12 @@ sync:
     delays: ${SYNC_RETRY_DELAYS:1s,2s,4s}
   lock:
     # DP-09: cuánto espera un disparador a que termine otra sincronización. Si se supera, termina sin
-    # cambios y registra LOCK_TIMEOUT. El valor cubre el peor caso de CU-02 (ver SyncProperties).
-    wait-timeout: ${SYNC_LOCK_WAIT_TIMEOUT:6m}
+    # cambios y registra LOCK_TIMEOUT. El valor cubre el peor caso de CU-03 con Redis (ver SyncProperties).
+    wait-timeout: ${SYNC_LOCK_WAIT_TIMEOUT:12m}
+  incremental:
+    # CU-04: después de este plazo no empieza otra versión ni otro reintento, y sigue un snapshot.
+    # Entra en la cuenta de wait-timeout: si se sube, hay que recalcularla.
+    time-budget: ${SYNC_INCREMENTAL_TIME_BUDGET:60s}
 
 # jhipster-needle-add-application-yaml-document
 ---

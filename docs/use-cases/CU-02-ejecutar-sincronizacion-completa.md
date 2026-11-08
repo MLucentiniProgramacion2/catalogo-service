@@ -49,7 +49,9 @@ Otro caso de uso determina que hace falta reconstruir la copia local.
   reintenta, porque no es una falla transitoria. Se registra un error de configuración, **sin
   incluir el token** en el estado ni en los logs, y el caso termina con fallo.
 - **3a. Respuesta inválida o con referencias inexistentes:** no se aplica nada, se registra el
-  error y el caso termina con fallo. No se aplica un snapshot parcial.
+  error y el caso termina con fallo. No se aplica un snapshot parcial. Un número con decimales
+  donde el contrato pide un entero (una versión, un ID o `slotDurationMinutes`) también es una
+  respuesta inválida: no se trunca (issue #33).
 - **5a. Falla de la base durante la transacción:** se hace rollback; la copia anterior y su
   versión quedan intactas. Si la falla es transitoria (la base no respondió, se cortó la conexión,
   timeout o bloqueo), se reintenta de forma acotada (DP-08); si se agotan los reintentos, se

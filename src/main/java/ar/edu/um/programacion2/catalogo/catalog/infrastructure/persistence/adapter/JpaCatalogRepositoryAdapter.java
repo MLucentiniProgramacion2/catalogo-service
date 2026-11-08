@@ -19,8 +19,10 @@ import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.repos
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.repository.ProfessionalSpecifications;
 import jakarta.persistence.EntityManager;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -52,6 +54,8 @@ import org.springframework.transaction.annotation.Transactional;
  * borrada. {@code @Repository} hace que Spring traduzca las fallas de la base, incluidas las de {@code persist} y
  * {@code flush}, a {@code DataAccessException}; también traduce las {@code IllegalArgumentException} de los mappers a
  * {@code InvalidDataAccessApiUsageException}.
+ * <p>
+ * {@link #saveAll} crea o actualiza sin borrar nada, para el incremental (CU-04); ver su comentario.
  * <p>
  * Las lecturas usan consultas derivadas con el filtro y el orden en el nombre del método: filtra y ordena la base, no la
  * memoria. También son {@code MANDATORY}: la transacción (y su aislamiento) la elige el caso de uso.
@@ -92,6 +96,42 @@ public class JpaCatalogRepositoryAdapter implements CatalogRepository {
             )
         );
         entityManager.flush();
+    }
+
+    /**
+     * Un {@code merge} por entidad, en orden, y un {@code flush} al final. Acá el {@code SELECT} que hace {@code merge} con
+     * un ID asignado (el motivo del {@code persist} de {@link #replaceAll}) es el que hace falta: dice si la fila existe
+     * para crearla o actualizarla. Si la entidad no cambió, Hibernate no la escribe, así que reaplicar una versión no
+     * manda ningún {@code UPDATE}. Las referencias van con {@code getReferenceById}, sin consultar la base.
+     * <p>
+     * Las horas pasan por la misma {@code WeeklyScheduleEntity}, con {@code @JdbcTypeCode(LOCAL_TIME)}: no se convierten
+     * de zona. Un {@code insert ... on conflict do update} en HQL se saltearía ese mapeo (ver el #27).
+     */
+    @Override
+    public void saveAll(List<ProfessionalCategory> categories, List<Professional> professionals, List<WeeklySchedule> weeklySchedules) {
+        Objects.requireNonNull(categories, "Faltan las categorías");
+        Objects.requireNonNull(professionals, "Faltan los profesionales");
+        Objects.requireNonNull(weeklySchedules, "Faltan los horarios");
+
+        categories.forEach(category -> entityManager.merge(categoryMapper.toEntity(category)));
+        professionals.forEach(professional ->
+            entityManager.merge(professionalMapper.toEntity(professional, categoryRepository.getReferenceById(professional.categoryId())))
+        );
+        weeklySchedules.forEach(schedule ->
+            entityManager.merge(weeklyScheduleMapper.toEntity(schedule, professionalRepository.getReferenceById(schedule.professionalId())))
+        );
+        entityManager.flush();
+    }
+
+    /** Un {@code select id ... where id in (...)}; sin IDs, no consulta. */
+    @Override
+    public Set<Long> findExistingCategoryIds(Collection<Long> ids) {
+        return ids.isEmpty() ? Set.of() : Set.copyOf(categoryRepository.findExistingIds(ids));
+    }
+
+    @Override
+    public Set<Long> findExistingProfessionalIds(Collection<Long> ids) {
+        return ids.isEmpty() ? Set.of() : Set.copyOf(professionalRepository.findExistingIds(ids));
     }
 
     @Override

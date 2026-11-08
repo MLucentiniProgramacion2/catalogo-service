@@ -31,10 +31,6 @@ public sealed interface ManualSyncResult {
     /** No se ejecutó: otra sincronización seguía en curso al vencer la espera máxima (DP-09). Ya quedó registrado. */
     record OtherSyncInProgress() implements ManualSyncResult {}
 
-    /** El modo pedido todavía no está disponible. No se intentó nada ni se registró un error: no falló ninguna sincronización. */
-    record ModeNotAvailable(SyncMode mode) implements ManualSyncResult {
-        public ModeNotAvailable {
-            Objects.requireNonNull(mode, "Falta el modo");
-        }
-    }
+    /** Modo normal: la copia ya estaba en la versión publicada en Redis, o en una posterior. No se aplicó nada. */
+    record UpToDate(long localVersion, long remoteVersion, int attempts) implements ManualSyncResult {}
 }

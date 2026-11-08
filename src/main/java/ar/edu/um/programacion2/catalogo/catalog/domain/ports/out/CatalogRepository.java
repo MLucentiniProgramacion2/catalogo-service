@@ -7,10 +7,13 @@ import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalSearchC
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalWithCategory;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.ResultPage;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.WeeklySchedule;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 /**
- * Copia local del catálogo: la reemplaza CU-02 (paso 5) y la consultan CU-05, CU-06 y CU-07. El dominio no sabe que
+ * Copia local del catálogo: la reemplaza CU-02 (paso 5), la actualiza CU-04 (paso 6) y la consultan CU-05, CU-06 y
+ * CU-07. El dominio no sabe que
  * detrás hay JPA: lo implementa un adaptador de {@code infrastructure.persistence}.
  * <p>
  * Recibe las tres colecciones sueltas y no un {@code CatalogSnapshot}: el snapshot es de {@code sync}, y {@code catalog}
@@ -30,6 +33,29 @@ public interface CatalogRepository {
      * base la rechaza. Cualquier falla sale como excepción no chequeada y deja la transacción marcada para deshacerse.
      */
     void replaceAll(List<ProfessionalCategory> categories, List<Professional> professionals, List<WeeklySchedule> weeklySchedules);
+
+    /**
+     * Crea o actualiza cada entidad con el estado recibido, sin tocar las demás (CU-04, paso 6): las de una versión
+     * incremental. Lo deshabilitado se guarda igual ({@code enabled = false} es la baja lógica). Guardar dos veces el
+     * mismo estado deja el mismo resultado.
+     * <p>
+     * Se guardan en orden (categorías, profesionales, horarios) y se suma a la transacción de quien llama, que falla si
+     * no hay una abierta: las entidades y la versión aplicada se confirman o se deshacen juntas.
+     * <p>
+     * Supone referencias que existen, en la copia o en estas mismas listas: lo verifica el caso de uso antes, con
+     * {@link #findExistingCategoryIds} y {@link #findExistingProfessionalIds} (CU-04, flujo 4a). Si igual llega una rota,
+     * la base la rechaza. Cualquier falla sale como excepción no chequeada y deja la transacción marcada para deshacerse.
+     */
+    void saveAll(List<ProfessionalCategory> categories, List<Professional> professionals, List<WeeklySchedule> weeklySchedules);
+
+    /**
+     * Cuáles de esas categorías existen en la copia local, deshabilitadas incluidas. Se suma a la transacción de quien
+     * llama: la verificación y el guardado tienen que ver la misma copia.
+     */
+    Set<Long> findExistingCategoryIds(Collection<Long> ids);
+
+    /** Cuáles de esos profesionales existen en la copia local, deshabilitados incluidos. Igual que {@link #findExistingCategoryIds}. */
+    Set<Long> findExistingProfessionalIds(Collection<Long> ids);
 
     /**
      * Categorías de la copia local, ordenadas por ID (CU-06). Con {@code enabled} nulo vienen todas, incluidas las

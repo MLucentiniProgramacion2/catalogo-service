@@ -35,6 +35,10 @@ public class SyncProperties {
     @NotNull
     private Lock lock = new Lock();
 
+    @Valid
+    @NotNull
+    private Incremental incremental = new Incremental();
+
     @Getter
     @Setter
     public static class Startup {
@@ -65,13 +69,29 @@ public class SyncProperties {
          * Cuánto espera un disparador a que termine otra sincronización (DP-09). Si se supera, termina sin cambios y
          * registra {@code LOCK_TIMEOUT}.
          * <p>
-         * Tiene que cubrir el peor caso de CU-02: 4 intentos de 65 s (5 s de conexión y 30 s de respuesta de la cátedra,
-         * más 30 s de espera de una conexión de Hikari), 7 s entre reintentos y otros 30 s para registrar el error dan
-         * 297 s. Con 5 min sobrarían 3 s sin contar el reemplazo mismo; por eso 6 min. Si se suben esos timeouts, hay que
-         * recalcularlo.
+         * Tiene que cubrir el peor caso de CU-03 con la exclusión tomada (issue #33): leer la versión local (30 s de
+         * Hikari); la lectura previa (metadata, versión remota y cambios: 14 + 30 + 14 s) con sus 3 reintentos de hasta
+         * 30 s y 7 s de esperas; el plazo del lote incremental (60 s) y la versión en curso al vencer (4 + 3 × 14 + 30 s);
+         * y después CU-02 (297 s). Un intento contra Redis son 14 s: 5 de conexión y 3 por cada comando del saludo y del
+         * pedido. Total: 618 s. Con 12 min sobran 102 s. Si se suben esos timeouts o el plazo, hay que recalcularlo: lo
+         * hace {@code SyncWorstCase} en los tests.
          */
         @NotNull
         @DurationMin(millis = 1)
-        private Duration waitTimeout = Duration.ofMinutes(6);
+        private Duration waitTimeout = Duration.ofMinutes(12);
+    }
+
+    @Getter
+    @Setter
+    public static class Incremental {
+
+        /**
+         * Plazo de un lote de CU-04: después de esto no empieza otra versión ni otro reintento, se conservan las aplicadas
+         * y CU-03 sigue con un snapshot. El caso real (33 versiones de a un profesional) tarda unos 10 s por ZeroTier,
+         * así que 60 s dejan margen. Entra en la cuenta de la espera de la exclusión: si se sube, hay que recalcularla.
+         */
+        @NotNull
+        @DurationMin(millis = 1)
+        private Duration timeBudget = Duration.ofSeconds(60);
     }
 }

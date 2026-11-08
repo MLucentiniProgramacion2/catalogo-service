@@ -1,5 +1,6 @@
 package ar.edu.um.programacion2.catalogo.sync.infrastructure.config;
 
+import ar.edu.um.programacion2.catalogo.sync.application.usecases.IncrementalTimeBudget;
 import ar.edu.um.programacion2.catalogo.sync.application.usecases.RetryBackoff;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.out.SyncLock;
 import ar.edu.um.programacion2.catalogo.sync.infrastructure.lock.InMemorySyncLock;
@@ -27,6 +28,12 @@ public class SyncConfiguration {
     @Bean
     public RetryBackoff retryBackoff(SyncProperties properties) {
         return new RetryBackoff(properties.getRetry().getDelays(), Thread::sleep);
+    }
+
+    /** El plazo de un lote incremental (CU-04). */
+    @Bean
+    public IncrementalTimeBudget incrementalTimeBudget(SyncProperties properties) {
+        return new IncrementalTimeBudget(properties.getIncremental().getTimeBudget());
     }
 
     /** La exclusión mutua de DP-09, en memoria: una sola instancia del servicio. */
