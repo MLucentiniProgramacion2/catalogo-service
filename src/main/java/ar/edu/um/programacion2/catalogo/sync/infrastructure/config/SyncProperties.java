@@ -35,6 +35,10 @@ public class SyncProperties {
     @NotNull
     private Lock lock = new Lock();
 
+    @Valid
+    @NotNull
+    private Incremental incremental = new Incremental();
+
     @Getter
     @Setter
     public static class Startup {
@@ -73,5 +77,19 @@ public class SyncProperties {
         @NotNull
         @DurationMin(millis = 1)
         private Duration waitTimeout = Duration.ofMinutes(6);
+    }
+
+    @Getter
+    @Setter
+    public static class Incremental {
+
+        /**
+         * Plazo de un lote de CU-04: después de esto no empieza otra versión ni otro reintento, se conservan las aplicadas
+         * y CU-03 sigue con un snapshot. El caso real (33 versiones de a un profesional) tarda unos 10 s por ZeroTier,
+         * así que 60 s dejan margen. Entra en la cuenta de la espera de la exclusión: si se sube, hay que recalcularla.
+         */
+        @NotNull
+        @DurationMin(millis = 1)
+        private Duration timeBudget = Duration.ofSeconds(60);
     }
 }

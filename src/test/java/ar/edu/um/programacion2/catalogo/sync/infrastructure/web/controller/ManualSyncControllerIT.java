@@ -137,7 +137,7 @@ class ManualSyncControllerIT {
             .andExpect(jsonPath("$.attempts").value(1))
             .andExpect(jsonPath("$.path").value(RUTA))
             .andExpect(jsonPath("$.type").value(TIPO_PROBLEMA))
-            .andExpect(jsonPath("$.detail").value(containsString("La cátedra rechazó la credencial técnica")))
+            .andExpect(jsonPath("$.detail").value(containsString("La API REST de la cátedra rechazó la credencial técnica")))
             .andExpect(content().string(not(containsString("Exception"))));
     }
 

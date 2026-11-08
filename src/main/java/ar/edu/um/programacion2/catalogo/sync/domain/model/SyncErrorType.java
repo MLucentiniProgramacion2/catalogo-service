@@ -5,7 +5,10 @@ package ar.edu.um.programacion2.catalogo.sync.domain.model;
  * tipo no requiere una migración.
  */
 public enum SyncErrorType {
-    /** Redis de la cátedra no respondió después de los reintentos (CU-03 y CU-04). */
+    /**
+     * Redis de la cátedra no respondió (timeout o sin conexión) en todos los intentos (CU-03 flujo 6a, CU-04 flujos 1b y
+     * 3b). Se conservan las versiones ya aplicadas completas.
+     */
     REDIS_UNAVAILABLE,
 
     /**
@@ -14,7 +17,11 @@ public enum SyncErrorType {
      */
     SNAPSHOT_FAILED,
 
-    /** La cátedra rechazó la credencial técnica (401 o 403). No se reintenta: hay que revisar la configuración. */
+    /**
+     * La cátedra rechazó la credencial: la API REST con un 401 o 403 (CU-02), o Redis con {@code WRONGPASS} o
+     * {@code NOPERM} (CU-03 y CU-04). La descripción dice cuál de los dos fue. No se reintenta ni se cae en un snapshot:
+     * hay que revisar la configuración.
+     */
     INVALID_CREDENTIALS,
 
     /** Otra sincronización tenía tomada la exclusión mutua y se superó la espera máxima (DP-09). */
@@ -31,6 +38,13 @@ public enum SyncErrorType {
      * intentos (CU-02, flujo 5a). La transacción se deshizo: la copia y la versión anteriores quedaron intactas.
      */
     DATABASE_UNAVAILABLE,
+
+    /**
+     * Una versión incremental no se pudo aplicar por una falla de la base local que <strong>no</strong> es transitoria
+     * (no está en {@code DatabaseFailures}: la base rechazó los datos o el uso), por un error inesperado, o porque se
+     * interrumpió (CU-04, flujo 6a). Reintentar no sirve. Esa versión hizo rollback y se conservan las anteriores.
+     */
+    INCREMENTAL_FAILED,
 
     /** Llegó un mensaje de Kafka ilegible o sin {@code eventId} o {@code newVersion}, y se descartó (CU-03, flujo 2a). */
     INVALID_EVENT,

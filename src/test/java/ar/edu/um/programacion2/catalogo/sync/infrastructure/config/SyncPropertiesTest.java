@@ -37,4 +37,18 @@ class SyncPropertiesTest {
 
         assertThat(validator.validate(properties)).isNotEmpty();
     }
+
+    @Test
+    void elPlazoDelLoteIncrementalEsDeUnMinutoPorDefecto() {
+        assertThat(new SyncProperties().getIncremental().getTimeBudget()).isEqualTo(Duration.ofSeconds(60));
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = { 0, -1 })
+    void elPlazoDelLoteIncrementalTieneQueSerPositivo(long milisegundos) {
+        SyncProperties properties = new SyncProperties();
+        properties.getIncremental().setTimeBudget(Duration.ofMillis(milisegundos));
+
+        assertThat(validator.validate(properties)).isNotEmpty();
+    }
 }
