@@ -139,10 +139,12 @@ sale de la misma cuenta ([ADR 0005](../adr/0005-consumidor-kafka.md)).
 
 ## Decisiones todavía pendientes que afectan a estos casos
 
-- Contrato concreto con el servicio de turnos: rutas, DTOs y códigos de error de CU-07.
+Ninguna. Ya no están pendientes:
 
-Ya no están pendientes:
-
+- El contrato con el servicio de turnos para CU-07: ruta, DTO y `code` en
+  [CU-07](CU-07-consultar-agenda-vigente.md#contrato-del-endpoint-issue-35), y la autorización en el
+  [ADR 0007](../adr/0007-autorizacion-token-de-servicio.md) (issue #35). El documento de contratos entre
+  los dos servicios (enunciado §12) va a resumirlo.
 - La clave de firma del JWT compartida con turnos: ver el [ADR 0003](../adr/0003-validacion-jwt.md).
 - El formato de los changelogs de Liquibase: XML, uno por tabla, en carpetas por feature (ver el
   [ADR 0002](../adr/0002-liquibase.md)).
