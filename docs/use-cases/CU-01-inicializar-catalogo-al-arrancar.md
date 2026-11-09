@@ -41,9 +41,10 @@ El servicio de catálogo termina de iniciar (primer arranque o reinicio).
   local" siempre deriva en snapshot.
 - **3a. Redis no disponible:** CU-03 agota sus reintentos (DP-08), registra el error y el servicio
   sigue atendiendo con la copia local existente. La comprobación periódica reintentará más tarde.
-- **3b. Llega un `CatalogUpdated` o vence la comprobación periódica mientras corre el arranque:**
-  la exclusión mutua (DP-09) hace que ese disparador espere; al entrar, vuelve a comparar versiones
-  y normalmente ya no tiene nada que aplicar.
+- **3b. Llega un `CatalogUpdated` mientras corre el arranque:** la exclusión mutua (DP-09) hace
+  que el aviso espere; al entrar, vuelve a comparar versiones y normalmente ya no tiene nada que
+  aplicar. **Si vence la comprobación periódica**, no espera: esa pasada se saltea sin registrar
+  nada, porque el arranque ya está comparando versiones, y la próxima vuelve a intentar.
 
 ## Postcondiciones
 
@@ -61,6 +62,31 @@ El servicio de catálogo termina de iniciar (primer arranque o reinicio).
 - **DP-04:** el arranque con versión local existente no tiene un flujo propio: es uno de los
   disparadores de CU-03, que reutiliza la misma lógica e idempotencia.
 - **DP-09:** una sola incorporación de cambios a la vez. Ver CU-03.
+
+## Implementación (issue #35)
+
+CU-01 no elige el camino: corre siempre **CU-03 con el disparador `STARTUP`**
+(`IncorporateChangesUseCase`), que es el único lugar con la regla. Sin versión local, CU-03 va
+directo a CU-02 sin leer Redis (paso 2); con versión, compara con la publicada en Redis y aplica lo
+que falte por incremental o por snapshot (paso 3). Así, un servicio que estuvo apagado mientras la
+cátedra publicaba se pone al día al arrancar igual que con un aviso de Kafka.
+
+- Corre en el `taskExecutor` de JHipster, para no frenar el readiness, y fuera de toda transacción
+  (CU-03 y CU-02 son `Propagation.NEVER`).
+- Toma la exclusión esperando (DP-09) y lee la versión **adentro** (`LocalVersionReader`). Si la base
+  no responde al leerla, no intenta nada y registra `DATABASE_UNAVAILABLE` con un texto fijo.
+- Un fallo nunca tumba el arranque: lo esperado ya queda registrado por CU-03 o CU-02, y lo
+  inesperado lo atrapa `StartupSyncTrigger` y va al log.
+- Se apaga con `sync.startup.enabled=false` (`SYNC_STARTUP_ENABLED`), como en `src/test`.
+
+| Flujo | Resultado | `sync_status` |
+| --- | --- | --- |
+| 2. Base vacía | Snapshot por REST, sin leer Redis | `SNAPSHOT`, `STARTUP` |
+| 2a. El snapshot falla | Sin copia; las consultas dan `503` con `Retry-After` | El error de CU-02; la periódica lo vuelve a intentar |
+| 3. Copia atrasada | Incremental (o snapshot si hay discontinuidad) | `INCREMENTAL` o `SNAPSHOT`, `STARTUP`; `remoteVersion` |
+| 3. Copia al día | Sin cambios | Solo `remoteVersion` |
+| 3a. Redis no disponible | Sigue la copia guardada | `REDIS_UNAVAILABLE`; la periódica recupera el atraso |
+| Espera de la exclusión vencida | Sin cambios | `LOCK_TIMEOUT` |
 
 ## Respaldo en las consignas
 

@@ -37,7 +37,8 @@ Cualquiera de estos cuatro, que comparten el mismo flujo:
 3. *(Solo Kafka)* **Primera barrera de idempotencia:** se busca el `eventId` en la tabla de
    eventos procesados.
 4. Se toma la **exclusión mutua** de sincronización, esperando como máximo el tiempo configurado
-   (DP-09).
+   (DP-09). La comprobación periódica no espera: si hay otra sincronización en curso o esperando,
+   saltea esa pasada sin registrar nada.
 5. Se lee la versión local.
 6. Si **no hay versión local**, se ejecuta directamente **CU-02** (paso 8) sin leer Redis: la regla
    del camino ya decide un snapshot, y la primera copia viene por REST, así que un Redis caído no
@@ -69,7 +70,8 @@ Cualquiera de estos cuatro, que comparten el mismo flujo:
 - **3a. El `eventId` ya está registrado** (mensaje duplicado): no se aplican cambios y se commitea
   el offset. El estado final no cambia.
 - **4a. Se supera la espera máxima de la exclusión mutua:** el disparador termina **sin aplicar
-  cambios** y lo deja registrado en el estado de sincronización. Si es Kafka, el `eventId`
+  cambios** y lo deja registrado en el estado de sincronización. No le pasa a la comprobación
+  periódica, que no espera. Si es Kafka, el `eventId`
   **no** se registra y se commitea el offset. La comprobación periódica lo cubre después.
 - **6a. Redis no disponible o timeout:** reintentos acotados (DP-08). Si se agotan, no se aplica
   nada, se registra `REDIS_UNAVAILABLE` y, si es Kafka, el `eventId` **no** se registra y se
@@ -130,7 +132,9 @@ Cualquiera de estos cuatro, que comparten el mismo flujo:
 - **DP-09 (exclusión mutua):** una sola incorporación de cambios a la vez. Un segundo disparador
   espera; al entrar, vuelve a comparar versiones y normalmente ya no tiene nada que hacer. La
   espera tiene un tiempo máximo configurable: si se supera, termina sin aplicar cambios, lo
-  registra en el estado de sincronización y la comprobación periódica lo cubre después.
+  registra en el estado de sincronización y la comprobación periódica lo cubre después. La
+  comprobación periódica es la excepción: no espera, y si la exclusión está tomada o alguien la
+  espera, saltea esa pasada sin registrar nada (issue #35).
 
 ## Recepción por Kafka (issue #31)
 
@@ -162,8 +166,8 @@ y la deduplicación lo cubre.
 ## Con Redis (issue #33)
 
 Los pasos 6 a 10 son los mismos para todos los disparadores: los implementa
-`IncorporateChangesUseCase`, que usan el aviso de Kafka y CU-08 en modo normal (y van a usar el arranque
-y la comprobación periódica). Cada disparador conserva lo suyo: las barreras del aviso, la exclusión y
+`IncorporateChangesUseCase`, que usan el aviso de Kafka, CU-08 en modo normal y, desde el #35, el
+arranque (CU-01) y la comprobación periódica. Cada disparador conserva lo suyo: las barreras del aviso, la exclusión y
 la lectura de la versión adentro de ella. El cliente de Redis está en el
 [ADR 0006](../adr/0006-cliente-redis.md).
 
@@ -210,6 +214,43 @@ la lectura de la versión adentro de ella. El cliente de Redis está en el
 
 Las descripciones de `sync_status` se informan a los usuarios (CU-09): son textos fijos, sin nombres de
 clases, hosts, usuarios, tokens ni el contenido del mensaje.
+
+## Comprobación periódica (issue #35)
+
+El disparador 3 está implementado desde el #35. Es CU-03 con `PERIODIC`, sin las barreras del aviso:
+no trae `eventId`, así que su barrera de idempotencia es la comparación de versiones.
+
+### Configuración
+
+| Variable | Por defecto | Regla |
+| --- | --- | --- |
+| `SYNC_PERIODIC_ENABLED` | `true` | Con `false` la tarea ni se registra (así está en `src/test`). |
+| `SYNC_PERIODIC_INTERVAL` | `5m` | Mínimo `1m`: con menos, la aplicación no arranca. `5` sin unidad son 5 ms. |
+
+- **Demora fija (`fixedDelay`):** el intervalo se cuenta desde que termina una pasada, y la primera es
+  un intervalo después de arrancar. Después de un snapshot largo no se encadenan pasadas.
+- **No espera la exclusión.** Si hay otra sincronización en curso o esperando, esa ya compara
+  versiones: la pasada se saltea sin registrar nada (ni `LOCK_TIMEOUT` ni "interrumpido"). Si esperara,
+  en la cola justa sumaría su peor caso a la espera de un aviso que llegue detrás. Se toma con
+  `tryLock(0, …)`, que respeta la cola, y no con `tryLock()`, que se mete delante.
+- **Sin versión local hace el snapshot:** recupera un arranque que no pudo armar la primera copia
+  (CU-01, flujo 2a). Por eso es el `Retry-After` del `503` con la base vacía (DP-03).
+- **Log:** la pasada "al día" va en DEBUG; aplicar o fallar, en INFO, WARN o ERROR como con los demás
+  disparadores.
+- **Apagado:** Spring espera a la pasada en curso hasta `spring.lifecycle.timeout-per-shutdown-phase`
+  (30 s) y después la interrumpe. Una pasada al día termina; una larga hace rollback de la versión en
+  curso, porque cada versión es su propia transacción.
+
+| Situación | Qué hace la pasada | `sync_status` |
+| --- | --- | --- |
+| Aviso perdido (Redis va adelante) | Aplica por incremental, o por snapshot si hay discontinuidad | Versión, `PERIODIC`; `remoteVersion` |
+| Al día | Nada | `remoteVersion` y su fecha (CU-09 informa el error anterior como `resolved`) |
+| Base vacía (el arranque falló) | Snapshot por REST, sin leer Redis | `SNAPSHOT`, `PERIODIC` |
+| Redis sigue caído | Nada; reintenta en la próxima pasada | `REDIS_UNAVAILABLE` |
+| Otra sincronización en curso o esperando | Se saltea | Sin cambios |
+
+El peor caso con la exclusión tomada (618 s) no cambia: la periódica corre lo mismo que los demás
+disparadores con versión local, y como no espera nunca entra en la cola.
 
 ## Respaldo en las consignas
 

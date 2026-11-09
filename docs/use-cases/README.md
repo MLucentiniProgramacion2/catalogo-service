@@ -104,13 +104,13 @@ flowchart LR
 | --- | --- | --- |
 | DP-01 | "Disponibilidad" en la búsqueda significa que el profesional atiende en un día o franja según sus horarios semanales habilitados; no considera ocupaciones. Si no se indica el filtro "habilitado", se devuelven solo los habilitados; con `habilitado=false`, los deshabilitados. | CU-05 |
 | DP-02 | La app KMP consulta al catálogo directamente con el JWT de usuario emitido por turnos. | CU-05, CU-06, CU-09 |
-| DP-03 | Durante una reconstrucción se sirve la última copia confirmada y se informa la versión local; con la base vacía, `503`. | CU-01, CU-02, CU-05, CU-06, CU-07 |
-| DP-04 | Comprobación periódica de versión contra Redis cada N minutos (variable de entorno) como disparador adicional de CU-03, con la misma lógica e idempotencia. | CU-01, CU-03 |
+| DP-03 | Durante una reconstrucción se sirve la última copia confirmada y se informa la versión local; con la base vacía, `503` con `Retry-After` igual al intervalo de la comprobación periódica (sin el header si está apagada). | CU-01, CU-02, CU-05, CU-06, CU-07 |
+| DP-04 | Comprobación periódica de versión contra Redis como disparador adicional de CU-03 (`PERIODIC`), con la misma lógica e idempotencia: `sync.periodic.interval` (`SYNC_PERIODIC_INTERVAL`, 5 min por defecto, mínimo 1 min), con demora fija desde que termina la pasada anterior; se apaga con `SYNC_PERIODIC_ENABLED=false`. El arranque con versión local también corre CU-03 (`STARTUP`). Implementada en el #35. | CU-01, CU-03 |
 | DP-05 | Estado de sincronización: `ROLE_USER` o `ROLE_ADMIN`. Sincronización manual: solo `ROLE_ADMIN`. | CU-08, CU-09 |
 | DP-06 | Turnos usa un JWT técnico de servicio con `aud=catalogo-service`, `iss=turnos-service` y `ROLE_SERVICE` (DPT-16 de turnos); el endpoint de agenda exige los tres como regla de autorización, no de la validación general del token, y si falta uno responde `403`; `X-User-Login` solo para trazabilidad; los endpoints de usuario rechazan el token técnico. | CU-05 a CU-09 |
 | DP-07 | `eventId` procesados en una tabla de PostgreSQL (`processed_event`: `eventId`, `newVersion` del evento y fecha de procesamiento), en la misma transacción que los cambios; la comparación de versiones es una segunda barrera. El registro es "insertar si no existe": un `eventId` repetido no deshace la transacción. | CU-03, CU-04 |
 | DP-08 | Timeouts configurables, hasta 3 reintentos con backoff de 1 s, 2 s y 4 s; si se agotan, rollback de la versión en curso, se conservan las versiones completas, el `eventId` no se registra, se registra el error y se commitea el offset. Lo inesperado en el listener de Kafka se reintenta con las mismas esperas y termina igual, aunque no se pueda registrar el error ([ADR 0005](../adr/0005-consumidor-kafka.md)). Con Redis (#33), el presupuesto de 3 reintentos es por tramo y no por paso: la lectura previa de CU-03 (metadata, versión remota y cambios), el lote entero de CU-04 y CU-02 tienen uno cada uno, y un reintento repite solo el paso que falló. Redis: 5 s de conexión y 3 s por comando ([ADR 0006](../adr/0006-cliente-redis.md)). | CU-02, CU-03, CU-04 |
-| DP-09 | Una sola incorporación de cambios a la vez; los demás disparadores esperan hasta un máximo configurable (`sync.lock.wait-timeout`, 12 min por defecto) y, si se supera, terminan sin cambios y lo registran como `LOCK_TIMEOUT`. Los 12 min cubren el peor caso de CU-03 con Redis, 618 s (tabla abajo), que tiene cota gracias al plazo del lote de CU-04 (`sync.incremental.time-budget`, 60 s). Por eso CU-08, que es sincrónico, puede tardar hasta unos 22 min. | CU-01, CU-03, CU-04, CU-08 |
+| DP-09 | Una sola incorporación de cambios a la vez; los demás disparadores esperan hasta un máximo configurable (`sync.lock.wait-timeout`, 12 min por defecto) y, si se supera, terminan sin cambios y lo registran como `LOCK_TIMEOUT`. La comprobación periódica no espera: si la exclusión está tomada o alguien la espera, saltea la pasada sin registrar nada (#35). Los 12 min cubren el peor caso de CU-03 con Redis, 618 s (tabla abajo), que tiene cota gracias al plazo del lote de CU-04 (`sync.incremental.time-budget`, 60 s). Por eso CU-08, que es sincrónico, puede tardar hasta unos 22 min. | CU-01, CU-03, CU-04, CU-08 |
 | DP-10 | La sincronización manual corre la lógica de CU-03 por defecto y puede forzar un snapshot con un parámetro explícito. | CU-08 |
 
 ### Peor caso de CU-03 con la exclusión tomada (DP-09)
@@ -126,7 +126,10 @@ flowchart LR
 | **Total** | **618** |
 
 Un intento contra Redis son 14 s (5 de conexión y 3 por cada comando del saludo y del pedido). Con 12
-min de espera sobran 102 s. `SyncWorstCase` arma esta cuenta en los tests con los valores reales de
+min de espera sobran 102 s. La cuenta es de quien tiene la exclusión, y es la misma con cualquier
+disparador: el arranque y la comprobación periódica (#35) corren lo mismo que CU-08 en modo normal (sin
+versión local, 30 + 297 = 327 s). Los 12 min cubren **un** dueño adelante: por eso la periódica no entra
+en la cola. `SyncWorstCase` arma esta cuenta en los tests con los valores reales de
 la configuración: si cambia un timeout, el test lo nota. El `max.poll.interval.ms` de Kafka (25 min)
 sale de la misma cuenta ([ADR 0005](../adr/0005-consumidor-kafka.md)).
 

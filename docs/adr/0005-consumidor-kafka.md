@@ -181,7 +181,7 @@ consumidor, para ganar poco.
   `org.apache` en WARN. Es un host, no una credencial, pero hay que revisarlo antes de publicar logs
   como evidencia.
 - Un aviso que falla no se reintenta hasta el próximo: la red de seguridad es la comprobación
-  periódica (DP-04), que todavía no existe.
+  periódica (DP-04), implementada en el issue #35.
 
 ## Alternativas descartadas
 

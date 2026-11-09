@@ -148,7 +148,7 @@ los totales correctos; si ningún profesional cumple los filtros, también `200`
 | Sin token, firma inválida o vencido (2a) | `401` | vacío (Spring Security) |
 | Token de servicio o sin `ROLE_USER`/`ROLE_ADMIN` (2b) | `403` | vacío (Spring Security) |
 | Parámetro inválido (2c): fuera de rango, no convertible, `name` de más de 100 caracteres, día inexistente o en minúsculas, hora mal formada, `from` no anterior a `to`, franja sin día | `400` | `problem+json`, `code: VALIDATION_ERROR` y `fieldErrors` |
-| Sin versión aplicada (3a) | `503` | `problem+json`, `code: CATALOG_NOT_INITIALIZED`, sin `Retry-After` |
+| Sin versión aplicada (3a) | `503` | `problem+json`, `code: CATALOG_NOT_INITIALIZED` y `Retry-After` con el intervalo de la comprobación periódica en segundos (sin el header si está apagada; issue #35) |
 
 El `400` tiene la forma del contrato §13, con un `fieldError` por parámetro inválido. Ni el `detail` ni los mensajes
 repiten el valor recibido:
