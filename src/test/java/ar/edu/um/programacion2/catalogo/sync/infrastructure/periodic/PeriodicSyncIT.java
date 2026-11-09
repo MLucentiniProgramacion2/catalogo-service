@@ -53,16 +53,18 @@ import org.testcontainers.containers.GenericContainer;
  * disparador a mano ({@link PeriodicSyncTrigger#checkCatalogVersion()}), que es exactamente lo que corre el scheduler.
  * Que el scheduler la tenga registrada con ese intervalo lo verifica {@link #laTareaQuedaRegistradaConElIntervaloConfigurado}.
  * <p>
- * Redis es un contenedor propio, porque un test lo pausa (como en {@code RedisCatalogChangesProviderIT}), con timeouts
- * cortos para que Redis caído falle enseguida.
+ * Redis es un contenedor propio, porque un test lo pausa (como en {@code RedisCatalogChangesProviderIT}). Los timeouts son
+ * más cortos que los reales para que Redis pausado falle en unos 4 s, pero no tanto: cada lectura que tiene que salir
+ * bien (incluido el saludo de la primera conexión, con la JVM en frío) depende del timeout del comando, y en el #33 uno
+ * de 300 ms dio un test inestable. Con 300 ms, 20 corridas en JVM nuevas no fallaron; con 1 s queda margen.
  */
 @IntegrationTest
 @TestPropertySource(
     properties = {
         "sync.periodic.enabled=true",
         "sync.periodic.interval=1h",
-        "catedra.redis.connect-timeout=500ms",
-        "catedra.redis.command-timeout=300ms",
+        "catedra.redis.connect-timeout=2s",
+        "catedra.redis.command-timeout=1s",
     }
 )
 class PeriodicSyncIT {
