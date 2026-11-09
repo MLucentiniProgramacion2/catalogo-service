@@ -150,7 +150,7 @@ public class IncorporateChangesUseCaseImpl implements IncorporateChangesUseCase 
             });
             warnIfNoticeIsAhead(target);
             if (upToDate) {
-                LOG.info("Sincronización ({}): la versión local {} ya está al día con la publicada {}", trigger, local, target);
+                logUpToDate(local, target);
                 return new IncorporationResult.UpToDate(local, target, attempts());
             }
             if (local < published.oldestAvailableVersion()) {
@@ -185,6 +185,19 @@ public class IncorporateChangesUseCaseImpl implements IncorporateChangesUseCase 
             syncStatusRepository.save(status);
             if (upToDate && notice != null) {
                 processedEventRepository.registerIfAbsent(notice.processedAt(now));
+            }
+        }
+
+        /**
+         * La comprobación periódica encuentra la copia al día casi siempre, cada pocos minutos: en INFO llenaría el log, así
+         * que va en DEBUG. Los demás disparadores son de a uno (un aviso, un arranque, un pedido) y quedan en INFO.
+         */
+        private void logUpToDate(long local, long target) {
+            String message = "Sincronización ({}): la versión local {} ya está al día con la publicada {}";
+            if (trigger == SyncTrigger.PERIODIC) {
+                LOG.debug(message, trigger, local, target);
+            } else {
+                LOG.info(message, trigger, local, target);
             }
         }
 

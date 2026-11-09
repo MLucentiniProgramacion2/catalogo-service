@@ -48,6 +48,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
@@ -57,7 +59,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * CU-03 con disparador, con los puertos y los casos incluidos mockeados. {@code sync_status} está en memoria para ver la
  * versión remota que quedó escrita.
  */
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({ MockitoExtension.class, OutputCaptureExtension.class })
 class IncorporateChangesUseCaseImplTest {
 
     private static final Instant AHORA = Instant.parse("2026-11-08T02:19:40Z");
@@ -360,6 +362,24 @@ class IncorporateChangesUseCaseImplTest {
         IncorporationResult resultado = useCase.incorporate(SyncTrigger.KAFKA, 88L, AVISO);
 
         assertThat(resultado).isEqualTo(new IncorporationResult.Applied(88L, 91, SyncPath.SNAPSHOT, 5));
+    }
+
+    @Test
+    void laPeriodicaAlDiaNoEscribeEnInfo(CapturedOutput salida) {
+        // Pasa cada pocos minutos: en INFO llenaría el log. Los tests corren con la aplicación en INFO.
+        publica(88, 1);
+
+        assertThat(useCase.incorporate(SyncTrigger.PERIODIC, 88L)).isEqualTo(new IncorporationResult.UpToDate(88, 88, 1));
+        assertThat(salida.getAll()).doesNotContain("ya está al día");
+    }
+
+    @Test
+    void losDemasDisparadoresAlDiaSiguenEnInfo(CapturedOutput salida) {
+        publica(88, 1);
+
+        useCase.incorporate(SyncTrigger.STARTUP, 88L);
+
+        assertThat(salida.getAll()).contains("Sincronización (STARTUP): la versión local 88 ya está al día con la publicada 88");
     }
 
     private void publica(long current, long oldest) {

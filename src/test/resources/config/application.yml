@@ -115,6 +115,10 @@ sync:
     # Apagado en los tests: cada contexto llamaría a la cátedra falsa al levantar, esperaría los
     # reintentos y escribiría sync_status. Solo lo prenden los tests de CU-01.
     enabled: false
+  periodic:
+    # Apagada en los tests, como el arranque: cada contexto programaría una tarea que llama a Redis.
+    # Solo la prenden los tests de DP-04, con un intervalo largo, y llaman al disparador a mano.
+    enabled: false
   retry:
     # Esperas cortas para que ningún test de integración duerma 7 s. Las de verdad (1 s, 2 s y 4 s)
     # las verifican los unitarios del caso de uso, sin dormir.
