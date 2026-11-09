@@ -94,6 +94,23 @@ class ExclusiveSyncIT {
     }
 
     @Test
+    void sinEsperarConOtraEnCursoSeSalteaYNoQuedaNadaEnElEstado() {
+        try (SyncLockHolder otra = SyncLockHolder.hold(syncLock)) {
+            assertThat(exclusiveSync.runIfFree(SyncTrigger.PERIODIC, () -> "no tiene que correr")).isEmpty();
+        }
+
+        SyncStatus estado = transactionTemplate.execute(tx -> syncStatusRepository.load());
+        assertThat(estado.getLastErrorType()).isNull();
+        assertThat(estado.hasLocalCopy()).isFalse();
+    }
+
+    @Test
+    void sinEsperarTampocoSePuedeLlamarDentroDeUnaTransaccion() {
+        assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(tx -> exclusiveSync.runIfFree(SyncTrigger.PERIODIC, () -> true)))
+            .isInstanceOf(IllegalTransactionStateException.class);
+    }
+
+    @Test
     void noSePuedeLlamarDentroDeUnaTransaccion() {
         assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(tx -> exclusiveSync.run(SyncTrigger.MANUAL, () -> true)))
             .isInstanceOf(IllegalTransactionStateException.class);
