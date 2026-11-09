@@ -19,9 +19,12 @@ import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalWithCat
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.ResultPage;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.Versioned;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.CatalogRepository;
+import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.CatalogRetryHint;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.LocalCatalogVersionProvider;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,6 +45,9 @@ class SearchProfessionalsUseCaseImplTest {
 
     @Mock
     private CatalogRepository catalogRepository;
+
+    @Mock
+    private CatalogRetryHint retryHint;
 
     @InjectMocks
     private SearchProfessionalsUseCaseImpl useCase;
@@ -118,5 +124,16 @@ class SearchProfessionalsUseCaseImplTest {
             new Professional(15, 1, "Ana", "Gomez", false, CREADO, CREADO),
             new ProfessionalCategory(1, "Clinica medica", null, true, CREADO, CREADO)
         );
+    }
+
+    @Test
+    void sinVersionAplicadaLaExcepcionTraeElPlazoParaVolverAConsultar() {
+        when(versionProvider.findAppliedVersion()).thenReturn(OptionalLong.empty());
+        when(retryHint.retryAfter()).thenReturn(Optional.of(Duration.ofMinutes(5)));
+
+        assertThatThrownBy(() -> useCase.searchProfessionals(ProfessionalSearchCriteria.of(null, null, null), PAGINA))
+            .isInstanceOfSatisfying(CatalogNotInitializedException.class, e ->
+                assertThat(e.getRetryAfter()).contains(Duration.ofMinutes(5))
+            );
     }
 }

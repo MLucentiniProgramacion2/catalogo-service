@@ -8,6 +8,7 @@ import ar.edu.um.programacion2.catalogo.catalog.domain.model.ResultPage;
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.Versioned;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.in.SearchProfessionalsUseCase;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.CatalogRepository;
+import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.CatalogRetryHint;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.LocalCatalogVersionProvider;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SearchProfessionalsUseCaseImpl implements SearchProfessionalsUseCase {
 
     private final LocalCatalogVersionProvider versionProvider;
+    private final CatalogRetryHint retryHint;
     private final CatalogRepository catalogRepository;
 
     @Override
@@ -38,7 +40,7 @@ public class SearchProfessionalsUseCaseImpl implements SearchProfessionalsUseCas
     public Versioned<ResultPage<ProfessionalWithCategory>> searchProfessionals(ProfessionalSearchCriteria criteria, PageQuery pageQuery) {
         Objects.requireNonNull(criteria, "Falta el criterio de búsqueda");
         Objects.requireNonNull(pageQuery, "Falta la página pedida");
-        long version = versionProvider.findAppliedVersion().orElseThrow(CatalogNotInitializedException::new);
+        long version = versionProvider.findAppliedVersion().orElseThrow(() -> new CatalogNotInitializedException(retryHint.retryAfter()));
         return new Versioned<>(version, catalogRepository.searchProfessionals(criteria, pageQuery));
     }
 }

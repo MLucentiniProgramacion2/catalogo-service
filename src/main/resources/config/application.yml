@@ -250,7 +250,7 @@ sync:
   periodic:
     # DP-04: cada cuánto se compara la versión local con la publicada en Redis (CU-03), contado desde
     # que termina la pasada anterior. Mínimo 1m. Si hay otra sincronización en curso, la pasada se
-    # saltea.
+    # saltea. Es también el Retry-After del 503 con la base vacía (sin la periódica, no hay header).
     enabled: ${SYNC_PERIODIC_ENABLED:true}
     interval: ${SYNC_PERIODIC_INTERVAL:5m}
   retry:
