@@ -29,22 +29,26 @@ public class SecurityConfiguration {
             .authorizeHttpRequests(authz ->
                 // Spring usa la primera regla cuyo patrón coincide con el pedido y no mira las siguientes: las rutas
                 // específicas van antes que /api/**. Si /api/** estuviera primero, /api/admin/** quedaría abierto a
-                // cualquier usuario. La regla del endpoint de agenda de CU-07 (ROLE_SERVICE con aud=catalogo-service e
-                // iss=turnos-service, DP-06) también va antes de /api/**: si no, /api/** le daría 403 al token de servicio.
+                // cualquier usuario, y /api/service/** (la agenda de CU-07) le daría 403 al token de servicio.
+                //
+                // /api/service/** es la regla de los endpoints de servicio: solo el JWT técnico de turnos, con
+                // ROLE_SERVICE, aud=catalogo-service, iss=turnos-service y vida corta (DP-06, ADR 0007). Si falta algo,
+                // 403; sin token o con uno inválido, 401.
                 //
                 // /api/** es la regla de los endpoints de usuario (CU-05, CU-06, CU-09). Es una lista de permitidos:
-                // pide ROLE_USER o ROLE_ADMIN, así que el token técnico de servicio (que solo trae ROLE_SERVICE) y un
-                // token sin roles reciben 403 (DP-06). ROLE_ADMIN está porque en turnos un admin puede quedar solo con
-                // ese rol (lo permite /api/admin/users).
+                // pide ROLE_USER o ROLE_ADMIN y que no sea un token de servicio (ROLE_SERVICE), así que el token técnico
+                // de servicio, uno mixto y uno sin roles reciben 403 (DP-06). ROLE_ADMIN está porque en turnos un admin
+                // puede quedar solo con ese rol (lo permite /api/admin/users). Las reglas de admin piden lo mismo.
                 // prettier-ignore
                 authz
-                    .requestMatchers("/api/admin/**").hasAuthority(AuthoritiesConstants.ADMIN)
-                    .requestMatchers("/api/**").hasAnyAuthority(AuthoritiesConstants.USER, AuthoritiesConstants.ADMIN)
-                    .requestMatchers("/v3/api-docs/**").hasAuthority(AuthoritiesConstants.ADMIN)
+                    .requestMatchers("/api/service/**").access(TokenAuthorizations.serviceToken())
+                    .requestMatchers("/api/admin/**").access(TokenAuthorizations.userToken(AuthoritiesConstants.ADMIN))
+                    .requestMatchers("/api/**").access(TokenAuthorizations.userToken(AuthoritiesConstants.USER, AuthoritiesConstants.ADMIN))
+                    .requestMatchers("/v3/api-docs/**").access(TokenAuthorizations.userToken(AuthoritiesConstants.ADMIN))
                     .requestMatchers("/management/health").permitAll()
                     .requestMatchers("/management/health/**").permitAll()
                     .requestMatchers("/management/info").permitAll()
-                    .requestMatchers("/management/**").hasAuthority(AuthoritiesConstants.ADMIN)
+                    .requestMatchers("/management/**").access(TokenAuthorizations.userToken(AuthoritiesConstants.ADMIN))
             )
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(exceptions ->

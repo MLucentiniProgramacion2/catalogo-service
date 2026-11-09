@@ -93,7 +93,8 @@ class SyncStatusControllerIT {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.localVersion").value((Object) null))
             .andExpect(jsonPath("$.lastError.type").value("CATEDRA_UNAVAILABLE"))
-            .andExpect(jsonPath("$.lastError.description").value("La cátedra no estuvo disponible"));
+            .andExpect(jsonPath("$.lastError.description").value("La cátedra no estuvo disponible"))
+            .andExpect(jsonPath("$.lastError.resolved").value(false));
     }
 
     @Test
@@ -114,12 +115,42 @@ class SyncStatusControllerIT {
                       "inProgress": false,
                       "lastSuccess": {"at": "2026-11-04T12:00:00Z", "path": "SNAPSHOT", "trigger": "MANUAL"},
                       "remote": {"version": 14, "checkedAt": "2026-11-04T12:30:00Z"},
-                      "lastError": {"at": "2026-11-04T13:00:00Z", "type": "LOCK_TIMEOUT", "description": "Otra seguía en curso"}
+                      "lastError": {"at": "2026-11-04T13:00:00Z", "type": "LOCK_TIMEOUT", "description": "Otra seguía en curso", "resolved": false}
                     }
                     """,
                     JsonCompareMode.STRICT
                 )
             );
+    }
+
+    @Test
+    void unErrorConUnaLecturaDeLaMetadataPosteriorSeInformaResuelto() throws Exception {
+        // Redis volvió y la copia estaba al día: no hubo otro éxito, pero la lectura posterior prueba que funciona.
+        modificarEstado(estado -> {
+            estado.recordSnapshotApplied(12, SyncTrigger.MANUAL, T1);
+            estado.recordError(SyncErrorType.REDIS_UNAVAILABLE, "Redis de la cátedra no respondió", T2);
+            estado.recordRemoteVersion(12, T3);
+        });
+
+        pedir(token("ROLE_USER"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.lastError.type").value("REDIS_UNAVAILABLE"))
+            .andExpect(jsonPath("$.lastError.resolved").value(true));
+    }
+
+    @Test
+    void sinVersionLocalElErrorNoSeInformaResueltoAunqueRedisHayaRespondidoDespues() throws Exception {
+        // Como quedó la base vaciada a mano en la comprobación manual del #35: versión remota posterior al error, sin copia.
+        modificarEstado(estado -> {
+            estado.recordError(SyncErrorType.CATEDRA_UNAVAILABLE, "La cátedra no estuvo disponible", T1);
+            estado.recordRemoteVersion(12, T2);
+        });
+
+        pedir(token("ROLE_USER"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.localVersion").value((Object) null))
+            .andExpect(jsonPath("$.remote.version").value(12))
+            .andExpect(jsonPath("$.lastError.resolved").value(false));
     }
 
     @Test

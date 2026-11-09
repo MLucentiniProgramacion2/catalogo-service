@@ -78,6 +78,14 @@ class TokenAuthenticationSecurityMetersIT {
         assertThat(meterRegistry.get(INVALID_TOKENS_METER_EXPECTED_NAME).tag("cause", "malformed").counter().count()).isEqualTo(count + 1);
     }
 
+    @Test
+    void unTokenSinExpCuentaComoVencido() throws Exception {
+        // ADR 0007: sin exp no hay vigencia que validar; se cuenta con los vencidos y no como "error desconocido".
+        var count = meterRegistry.get(INVALID_TOKENS_METER_EXPECTED_NAME).tag("cause", "expired").counter().count();
+        tryToAuthenticate(createSignedToken(jwtKey, "anonymous", claims -> claims.claims(c -> c.remove("exp"))));
+        assertThat(meterRegistry.get(INVALID_TOKENS_METER_EXPECTED_NAME).tag("cause", "expired").counter().count()).isEqualTo(count + 1);
+    }
+
     private void tryToAuthenticate(String token) throws Exception {
         mvc.perform(MockMvcRequestBuilders.get("/api/authenticate").header(AUTHORIZATION, BEARER + token));
     }

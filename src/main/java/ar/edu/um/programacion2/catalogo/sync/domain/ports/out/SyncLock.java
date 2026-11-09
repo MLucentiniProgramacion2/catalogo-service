@@ -24,6 +24,18 @@ public interface SyncLock {
      */
     <T> Optional<T> runExclusively(Supplier<T> action) throws InterruptedException;
 
+    /**
+     * Corre la acción solo si la exclusión está libre <strong>y nadie la está esperando</strong>; si no, vuelve enseguida
+     * sin correrla. Es para un disparador que no tiene que esperar (la comprobación periódica): si otro la tiene o está en
+     * la cola, ese ya va a comparar versiones, y meterse delante le quitaría el turno a un aviso que espera.
+     * <p>
+     * Igual que {@link #runExclusively}: corre en este hilo, se libera al terminar y un hilo que ya la tiene entra.
+     *
+     * @return el resultado de la acción, o vacío si no corrió.
+     * @throws InterruptedException si el hilo ya estaba interrumpido (por ejemplo, en el apagado); la acción no corrió.
+     */
+    <T> Optional<T> tryRunExclusively(Supplier<T> action) throws InterruptedException;
+
     /** Si hay una sincronización corriendo ahora (CU-09). No toma la exclusión ni espera. */
     boolean isHeld();
 }

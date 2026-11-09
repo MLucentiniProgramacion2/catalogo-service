@@ -1,10 +1,13 @@
 package ar.edu.um.programacion2.catalogo.catalog.infrastructure.web.controller;
 
 import ar.edu.um.programacion2.catalogo.catalog.application.exception.CatalogNotInitializedException;
+import ar.edu.um.programacion2.catalogo.catalog.application.exception.ProfessionalNotFoundException;
+import java.time.Duration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.ErrorResponseException;
-import tech.jhipster.web.rest.errors.ProblemDetailWithCause;
 import tech.jhipster.web.rest.errors.ProblemDetailWithCause.ProblemDetailWithCauseBuilder;
+import tech.jhipster.web.rest.errors.ProblemDetailWithCause;
 
 /**
  * Traduce las excepciones de aplicación del catálogo a errores HTTP. Los controllers de CU-05, CU-06 y CU-07 las atrapan
@@ -22,14 +25,21 @@ public final class CatalogErrorResponses {
     /** {@code code} del 503 con la base vacía: la app decide por status y code, nunca por {@code detail} (contrato §13). */
     public static final String CATALOG_NOT_INITIALIZED = "CATALOG_NOT_INITIALIZED";
 
+    /** {@code code} del 404 de CU-07: el profesional no está en la copia local. Es el mismo nombre que usa la cátedra. */
+    public static final String PROFESSIONAL_NOT_FOUND = "PROFESSIONAL_NOT_FOUND";
+
     private static final String CODE = "code";
 
     private CatalogErrorResponses() {}
 
     /**
-     * {@code 503}: la copia local todavía no tiene versión (DP-03). Sin {@code Retry-After}: hoy nada vuelve a intentar
-     * solo después de un arranque fallido (lo hacen un {@code CatalogUpdated} o la sincronización manual), así que un
-     * valor fijo prometería algo que no se cumple. Se puede sumar con la comprobación periódica de DP-04.
+     * {@code 503}: la copia local todavía no tiene versión (DP-03). Lo usan los tres controllers, así que el error sale
+     * igual en CU-05, CU-06 y CU-07.
+     * <p>
+     * Con {@code Retry-After} en segundos si la excepción trae un plazo: el intervalo de la comprobación periódica (DP-04),
+     * que es la que vuelve a intentar el snapshot. Sin plazo (la periódica apagada) no se manda: un valor fijo prometería
+     * algo que no se cumple. El header sobrevive al {@code ExceptionTranslator} porque {@code ResponseEntityExceptionHandler}
+     * responde una {@link ErrorResponseException} con sus propios headers.
      */
     public static ErrorResponseException notInitialized(CatalogNotInitializedException e) {
         ProblemDetailWithCause problem = ProblemDetailWithCauseBuilder.instance()
@@ -37,6 +47,23 @@ public final class CatalogErrorResponses {
             .withDetail(e.getMessage())
             .withProperty(CODE, CATALOG_NOT_INITIALIZED)
             .build();
-        return new ErrorResponseException(HttpStatus.SERVICE_UNAVAILABLE, problem, e);
+        ErrorResponseException response = new ErrorResponseException(HttpStatus.SERVICE_UNAVAILABLE, problem, e);
+        e.getRetryAfter().ifPresent(retryAfter -> response.getHeaders().set(HttpHeaders.RETRY_AFTER, String.valueOf(seconds(retryAfter))));
+        return response;
+    }
+
+    /** {@code 404}: el profesional pedido no está en la copia local (CU-07, flujo 4a). */
+    public static ErrorResponseException professionalNotFound(ProfessionalNotFoundException e) {
+        ProblemDetailWithCause problem = ProblemDetailWithCauseBuilder.instance()
+            .withStatus(HttpStatus.NOT_FOUND.value())
+            .withDetail(e.getMessage())
+            .withProperty(CODE, PROFESSIONAL_NOT_FOUND)
+            .build();
+        return new ErrorResponseException(HttpStatus.NOT_FOUND, problem, e);
+    }
+
+    /** {@code Retry-After} va en segundos enteros (RFC 9110): se redondea para arriba, para no prometer antes de tiempo. */
+    static long seconds(Duration retryAfter) {
+        return Math.ceilDiv(retryAfter.toMillis(), 1000);
     }
 }

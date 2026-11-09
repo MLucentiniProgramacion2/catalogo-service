@@ -5,6 +5,7 @@ import ar.edu.um.programacion2.catalogo.catalog.domain.model.ProfessionalCategor
 import ar.edu.um.programacion2.catalogo.catalog.domain.model.Versioned;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.in.ListCategoriesUseCase;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.CatalogRepository;
+import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.CatalogRetryHint;
 import ar.edu.um.programacion2.catalogo.catalog.domain.ports.out.LocalCatalogVersionProvider;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -29,12 +30,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class ListCategoriesUseCaseImpl implements ListCategoriesUseCase {
 
     private final LocalCatalogVersionProvider versionProvider;
+    private final CatalogRetryHint retryHint;
     private final CatalogRepository catalogRepository;
 
     @Override
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Versioned<List<ProfessionalCategory>> listCategories(Boolean enabled) {
-        long version = versionProvider.findAppliedVersion().orElseThrow(CatalogNotInitializedException::new);
+        long version = versionProvider.findAppliedVersion().orElseThrow(() -> new CatalogNotInitializedException(retryHint.retryAfter()));
         return new Versioned<>(version, catalogRepository.findCategories(enabled));
     }
 }

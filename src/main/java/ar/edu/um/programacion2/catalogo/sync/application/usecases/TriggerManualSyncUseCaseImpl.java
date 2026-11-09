@@ -8,17 +8,12 @@ import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncMode;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncPath;
 import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncTrigger;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.ExecuteFullSyncUseCase;
-import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.GetSyncStatusUseCase;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.IncorporateChangesUseCase;
 import ar.edu.um.programacion2.catalogo.sync.domain.ports.in.TriggerManualSyncUseCase;
 import java.util.Objects;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.TransactionException;
 
 /**
  * CU-08, con el disparador {@link SyncTrigger#MANUAL} y dentro de la exclusión mutua (DP-09) en los dos modos:
@@ -36,15 +31,10 @@ import org.springframework.transaction.TransactionException;
 @RequiredArgsConstructor
 public class TriggerManualSyncUseCaseImpl implements TriggerManualSyncUseCase {
 
-    private static final Logger LOG = LoggerFactory.getLogger(TriggerManualSyncUseCaseImpl.class);
-
-    static final String VERSION_UNREADABLE = "No se pudo leer la versión local en la base de datos: no se intentó la sincronización";
-
-    private final GetSyncStatusUseCase getSyncStatusUseCase;
+    private final LocalVersionReader localVersionReader;
     private final ExecuteFullSyncUseCase executeFullSyncUseCase;
     private final IncorporateChangesUseCase incorporateChangesUseCase;
     private final ExclusiveSync exclusiveSync;
-    private final SyncErrorRecorder syncErrorRecorder;
 
     @Override
     public ManualSyncResult triggerManualSync(SyncMode mode) {
@@ -106,14 +96,8 @@ public class TriggerManualSyncUseCaseImpl implements TriggerManualSyncUseCase {
      * falla, no se intenta nada: se informa como resultado, igual que las fallas de CU-02 (CU-08, flujo 3b).
      */
     private ManualSyncResult withVersionBefore(Function<Long, ManualSyncResult> mode) {
-        Long before;
-        try {
-            before = getSyncStatusUseCase.getSyncStatus().getLocalVersion();
-        } catch (DataAccessException | TransactionException e) {
-            LOG.error("Sincronización manual: {}", VERSION_UNREADABLE, e);
-            syncErrorRecorder.record(SyncErrorType.DATABASE_UNAVAILABLE, VERSION_UNREADABLE);
-            return new ManualSyncResult.Failed(null, null, SyncErrorType.DATABASE_UNAVAILABLE, VERSION_UNREADABLE, 0);
-        }
-        return mode.apply(before);
+        return localVersionReader.withLocalVersion(SyncTrigger.MANUAL, mode, () ->
+            new ManualSyncResult.Failed(null, null, SyncErrorType.DATABASE_UNAVAILABLE, LocalVersionReader.VERSION_UNREADABLE, 0)
+        );
     }
 }

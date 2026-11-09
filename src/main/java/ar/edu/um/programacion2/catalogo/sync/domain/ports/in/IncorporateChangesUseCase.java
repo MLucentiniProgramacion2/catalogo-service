@@ -6,8 +6,8 @@ import ar.edu.um.programacion2.catalogo.sync.domain.model.SyncTrigger;
 
 /**
  * CU-03, pasos 6 a 10, para cualquier disparador: leer la metadata de Redis, registrar la versión remota y elegir entre
- * el incremental (CU-04) y el snapshot (CU-02). Lo usan el aviso de Kafka y CU-08 en modo normal; después, el arranque y
- * la comprobación periódica.
+ * el incremental (CU-04) y el snapshot (CU-02). Lo usan el aviso de Kafka, CU-08 en modo normal y el arranque (CU-01);
+ * después, la comprobación periódica.
  * <p>
  * Lo que es propio de cada disparador queda afuera: las barreras del aviso, la exclusión mutua (DP-09) y la lectura de
  * la versión local, que el disparador hace <strong>adentro</strong> de la exclusión. Hay que llamarlo con la exclusión

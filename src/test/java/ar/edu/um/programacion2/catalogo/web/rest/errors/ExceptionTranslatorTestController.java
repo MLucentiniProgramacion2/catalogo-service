@@ -56,6 +56,10 @@ public class ExceptionTranslatorTestController {
         throw new TestResponseStatusException();
     }
 
+    /** Lee un header: si trae caracteres de control, el firewall de Spring Security lo rechaza al leerlo. */
+    @GetMapping("/request-header")
+    public void requestHeader(@RequestHeader("X-Prueba") String value) {}
+
     @GetMapping("/internal-server-error")
     public void internalServerError() {
         throw new RuntimeException();

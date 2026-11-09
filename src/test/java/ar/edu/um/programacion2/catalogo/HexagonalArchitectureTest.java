@@ -58,24 +58,28 @@ class HexagonalArchitectureTest {
 
     static final String FEATURE_WEB = "ar.edu.um.programacion2.catalogo.*.infrastructure.web..";
     static final String FEATURE_MESSAGING = "ar.edu.um.programacion2.catalogo.*.infrastructure.messaging..";
+    static final String FEATURE_STARTUP = "ar.edu.um.programacion2.catalogo.*.infrastructure.startup..";
+    static final String FEATURE_PERIODIC = "ar.edu.um.programacion2.catalogo.*.infrastructure.periodic..";
     static final String FEATURE_PERSISTENCE = "ar.edu.um.programacion2.catalogo.*.infrastructure.persistence..";
     static final String FEATURE_REDIS = "ar.edu.um.programacion2.catalogo.*.infrastructure.redis..";
     static final String FEATURE_CATEDRA = "ar.edu.um.programacion2.catalogo.*.infrastructure.catedra..";
+    static final String FEATURE_CLIENT = "ar.edu.um.programacion2.catalogo.*.infrastructure.client..";
 
     /**
      * De cualquier feature a cualquier feature: un controller de catalog tampoco puede usar la persistencia de sync. Cubre
-     * los adaptadores de salida a la base y a Redis, y las reglas de formato de la cátedra que comparten los de salida
-     * ({@code infrastructure.catedra}, issue #33).
+     * los adaptadores de salida a la base, a Redis y a la API REST de la cátedra, y las reglas de formato de la cátedra que
+     * comparten los de salida ({@code infrastructure.catedra}, issue #33). Los de entrada son los controllers, el listener
+     * de Kafka y los disparadores de arranque y periódico (issue #35).
      */
     @ArchTest
     static final ArchRule adaptadoresDeEntradaNoDependenDeAdaptadoresDeSalida = noClasses()
         .that()
-        .resideInAnyPackage(FEATURE_WEB, FEATURE_MESSAGING)
+        .resideInAnyPackage(FEATURE_WEB, FEATURE_MESSAGING, FEATURE_STARTUP, FEATURE_PERIODIC)
         .should()
         .dependOnClassesThat()
-        .resideInAnyPackage(FEATURE_PERSISTENCE, FEATURE_REDIS, FEATURE_CATEDRA)
+        .resideInAnyPackage(FEATURE_PERSISTENCE, FEATURE_REDIS, FEATURE_CATEDRA, FEATURE_CLIENT)
         .because(
-            "los adaptadores de entrada llaman al XxxService; las entidades, los repositorios, el cliente de Redis y los DTO de la cátedra no salen de sus paquetes"
+            "los adaptadores de entrada llaman al XxxService; las entidades, los repositorios, los clientes de Redis y de la API y los DTO de la cátedra no salen de sus paquetes"
         )
         .allowEmptyShould(true);
 

@@ -11,6 +11,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -142,6 +143,119 @@ class InMemorySyncLockTest {
         }
 
         assertThat(corrio).isFalse();
+    }
+
+    @Test
+    void sinEsperarConLaExclusionLibreCorre() throws Exception {
+        InMemorySyncLock lock = new InMemorySyncLock(LARGA);
+
+        assertThat(lock.tryRunExclusively(lock::isHeld)).contains(true);
+        assertThat(lock.isHeld()).isFalse();
+    }
+
+    @Test
+    void sinEsperarConOtraEnCursoVuelveEnseguidaSinCorrer() throws Exception {
+        // Con la espera larga: si tryRunExclusively esperara, el test quedaría parado 30 s y lo diría el tiempo.
+        InMemorySyncLock lock = new InMemorySyncLock(LARGA);
+        AtomicBoolean corrio = new AtomicBoolean();
+
+        try (SyncLockHolder otra = SyncLockHolder.hold(lock)) {
+            long antes = System.nanoTime();
+            Optional<Boolean> resultado = lock.tryRunExclusively(() -> {
+                corrio.set(true);
+                return true;
+            });
+
+            assertThat(resultado).isEmpty();
+            assertThat(Duration.ofNanos(System.nanoTime() - antes)).isLessThan(Duration.ofSeconds(5));
+        }
+
+        assertThat(corrio).isFalse();
+    }
+
+    @Test
+    void sinEsperarRespetaElOrdenDeLosQueEsperan() throws Exception {
+        // tryLock() se mete delante de la cola aunque el lock sea justo (Javadoc de ReentrantLock); tryLock(0, ...) no. La
+        // diferencia solo se ve en el instante entre que uno suelta y el siguiente toma, así que se verifica qué se llama.
+        RegistraComoSeToma registro = new RegistraComoSeToma();
+        InMemorySyncLock lock = new InMemorySyncLock(LARGA, registro);
+
+        lock.tryRunExclusively(() -> true);
+
+        assertThat(registro.sinPlazo).isZero();
+        assertThat(registro.conPlazoCero).isEqualTo(1);
+    }
+
+    @Test
+    void elLockTieneQueSerJusto() {
+        assertThatThrownBy(() -> new InMemorySyncLock(LARGA, new ReentrantLock(false))).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void sinEsperarElMismoHiloEntraDentroDeLaExterna() throws Exception {
+        InMemorySyncLock lock = new InMemorySyncLock(CORTA);
+
+        Optional<Optional<Boolean>> resultado = lock.runExclusively(() -> {
+            try {
+                return lock.tryRunExclusively(() -> true);
+            } catch (InterruptedException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertThat(resultado).contains(Optional.of(true));
+    }
+
+    @Test
+    void sinEsperarConElHiloInterrumpidoNoCorre() {
+        InMemorySyncLock lock = new InMemorySyncLock(LARGA);
+        AtomicBoolean corrio = new AtomicBoolean();
+        Thread.currentThread().interrupt();
+
+        assertThatThrownBy(() ->
+            lock.tryRunExclusively(() -> {
+                corrio.set(true);
+                return true;
+            })
+        ).isInstanceOf(InterruptedException.class);
+        assertThat(corrio).isFalse();
+    }
+
+    @Test
+    void sinEsperarSiLaAccionLanzaSeLiberaIgual() {
+        InMemorySyncLock lock = new InMemorySyncLock(CORTA);
+
+        assertThatThrownBy(() ->
+            lock.tryRunExclusively(() -> {
+                throw new IllegalStateException("falló");
+            })
+        ).isInstanceOf(IllegalStateException.class);
+        assertThat(lock.isHeld()).isFalse();
+    }
+
+    /** Un lock justo que cuenta cómo lo intentan tomar. */
+    private static final class RegistraComoSeToma extends ReentrantLock {
+
+        private int sinPlazo;
+        private int conPlazoCero;
+
+        RegistraComoSeToma() {
+            super(true);
+        }
+
+        @Override
+        public boolean tryLock() {
+            sinPlazo++;
+            return super.tryLock();
+        }
+
+        @Override
+        public boolean tryLock(long timeout, TimeUnit unit) throws InterruptedException {
+            if (timeout == 0) {
+                conPlazoCero++;
+            }
+            return super.tryLock(timeout, unit);
+        }
     }
 
     private static Optional<Boolean> tomarDesdeOtroHilo(InMemorySyncLock lock) {

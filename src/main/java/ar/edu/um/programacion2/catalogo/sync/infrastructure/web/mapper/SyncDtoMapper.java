@@ -39,7 +39,12 @@ public class SyncDtoMapper {
                 : new SyncStatusResponse.Remote(status.getRemoteVersion(), status.getRemoteVersionCheckedAt()),
             status.getLastErrorAt() == null
                 ? null
-                : new SyncStatusResponse.LastError(status.getLastErrorAt(), status.getLastErrorType(), status.getLastErrorDescription())
+                : new SyncStatusResponse.LastError(
+                    status.getLastErrorAt(),
+                    status.getLastErrorType(),
+                    status.getLastErrorDescription(),
+                    status.isLastErrorResolved()
+                )
         );
     }
 }

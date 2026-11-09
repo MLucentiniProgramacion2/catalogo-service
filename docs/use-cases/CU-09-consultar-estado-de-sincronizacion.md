@@ -73,7 +73,7 @@ No tiene parámetros. Respuesta `200 OK`:
   "inProgress": false,
   "lastSuccess": { "at": "2026-11-04T12:00:00Z", "path": "SNAPSHOT", "trigger": "MANUAL" },
   "remote": { "version": 14, "checkedAt": "2026-11-04T12:30:00Z" },
-  "lastError": { "at": "2026-11-04T13:00:00Z", "type": "LOCK_TIMEOUT", "description": "La sincronización (MANUAL) no se ejecutó: otra seguía en curso al vencer la espera máxima" }
+  "lastError": { "at": "2026-11-04T13:00:00Z", "type": "LOCK_TIMEOUT", "description": "La sincronización (MANUAL) no se ejecutó: otra seguía en curso al vencer la espera máxima", "resolved": false }
 }
 ```
 
@@ -88,8 +88,35 @@ Con la base sin datos y sin ningún intento (3a):
 | `localVersion` | Versión aplicada. `null` significa "sin datos": nunca se confirmó un snapshot. |
 | `inProgress` | Si hay una sincronización corriendo ahora. Sale de la exclusión mutua en memoria; no mira si hay alguna esperando. |
 | `lastSuccess` | Última sincronización exitosa: `path` es `SNAPSHOT` o `INCREMENTAL`, y `trigger` es `KAFKA`, `STARTUP`, `PERIODIC` o `MANUAL`. |
-| `remote` | Última versión publicada conocida y cuándo se leyó: la escribe CU-03 cada vez que lee la metadata de Redis (aviso de Kafka o CU-08 en modo normal), también cuando la copia está al día. No se consulta Redis en cada pedido. Queda en `null` hasta la primera lectura: sin versión local, CU-03 va directo al snapshot sin leer Redis. |
+| `remote` | Última versión publicada conocida y cuándo se leyó: la escribe CU-03 cada vez que lee la metadata de Redis (con cualquier disparador: aviso de Kafka, arranque, comprobación periódica o CU-08 en modo normal), también cuando la copia está al día. No se consulta Redis en cada pedido. Queda en `null` hasta la primera lectura: sin versión local, CU-03 va directo al snapshot sin leer Redis. |
 | `lastError` | Último error, aunque después haya habido un éxito: `lastSuccess` y `lastError` traen su fecha para compararlas. `type` es un valor de `SyncErrorType`; entre ellos, `INVALID_EVENT` (se descartó un aviso de Kafka ilegible o incompleto), `EVENT_PROCESSING_FAILED` (se descartó un aviso después de agotar los reintentos), `REDIS_UNAVAILABLE` (Redis no respondió) e `INCREMENTAL_FAILED` (la base rechazó una versión incremental; las anteriores se conservan). Con `INVALID_CREDENTIALS`, la descripción dice si fue la API REST o Redis. Que el estado publicado no se pueda verificar no es un error: termina en un snapshot, que queda como `lastSuccess` con `path: SNAPSHOT`, y el motivo va al log. |
+
+### `lastError.resolved` (issue #35)
+
+Un éxito no borra el último error, y una pasada que encuentra la copia al día no aplica nada, así que
+no cambia `lastSuccess`. Sin otro dato, después de que Redis vuelve la app vería el error como vigente
+hasta la próxima versión publicada. `resolved` lo resuelve sin tocar la base:
+
+> `resolved` es `true` si y solo si **hay versión local** y `lastSuccess.at` **o** `remote.checkedAt` es
+> **estrictamente posterior** a `lastError.at`.
+
+- Sin versión local nunca está resuelto: con la base vacía el catálogo no sirve (CU-05, CU-06 y CU-07
+  responden `503`), aunque Redis haya respondido después del error. Pasa si se vacía la base con la versión
+  remota ya registrada (encontrado en la comprobación manual del #35).
+- Con el mismo instante no cuenta como resuelto.
+- Los tres instantes salen del mismo `Clock` del servicio (UTC), así que se pueden comparar entre sí.
+- Funciona por el orden de CU-03: la versión remota se registra **antes** de aplicar, así que si en la
+  misma pasada falla CU-04 o CU-02, el error queda con fecha posterior y sigue sin resolver.
+
+| Flujo | Qué se escribe | `resolved` |
+| --- | --- | --- |
+| Se aplicó una versión o un snapshot después del error | `lastSuccess` (ahora) | `true` |
+| Una pasada encontró la copia al día después del error | `remote.checkedAt` (ahora) | `true` |
+| Redis no respondió al leer la metadata | `lastError`, sin `remote` | `false` |
+| Se leyó la metadata y después falló CU-04 o CU-02 | `remote` (t1) y después `lastError` (t2 > t1) | `false` |
+| `LOCK_TIMEOUT` y la que tenía la exclusión terminó bien | `lastSuccess` o `remote`, después del error | `true` |
+| Sin copia y el snapshot falló | `lastError` | `false` |
+| Sin copia, aunque `remote.checkedAt` sea posterior al error (la base se vació a mano) | Nada nuevo | `false` |
 
 Cada grupo es `null` entero si no hay datos, nunca a medias. La lectura es una sola fila en una
 transacción de solo lectura; "en curso" se mira antes, así que el peor desfase es informar `inProgress`

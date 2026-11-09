@@ -29,6 +29,10 @@ public class SyncProperties {
 
     @Valid
     @NotNull
+    private Periodic periodic = new Periodic();
+
+    @Valid
+    @NotNull
     private Retry retry = new Retry();
 
     @Valid
@@ -45,6 +49,25 @@ public class SyncProperties {
 
         /** CU-01: al arrancar, si no hay versión local, sincroniza con un snapshot. */
         private boolean enabled = true;
+    }
+
+    @Getter
+    @Setter
+    public static class Periodic {
+
+        /** DP-04: comprobar cada {@link #interval} la versión local contra la publicada en Redis (CU-03). */
+        private boolean enabled = true;
+
+        /**
+         * Cada cuánto, contado desde que termina una pasada ({@code fixedDelay}); la primera, este tiempo después de
+         * arrancar. Es también el {@code Retry-After} del 503 con la base vacía ({@code PeriodicCatalogRetryHint}).
+         * <p>
+         * 5 min: un aviso perdido se recupera en ese tiempo, y con la copia al día cada pasada es un {@code HMGET} y una
+         * transacción corta. El mínimo de 1 min corta un error de tipeo: {@code 5} sin unidad son 5 <strong>ms</strong>.
+         */
+        @NotNull
+        @DurationMin(minutes = 1)
+        private Duration interval = Duration.ofMinutes(5);
     }
 
     @Getter

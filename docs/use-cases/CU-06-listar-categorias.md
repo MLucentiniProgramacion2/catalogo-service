@@ -84,8 +84,9 @@ mezcla.
 
 Como en el contrato de la cátedra (§13), la app decide por `status` y `code`, nunca por `detail`.
 "Base vacía" es que nunca se confirmó un snapshot (`sync_status.local_version` nula), no que haya
-cero categorías: una versión aplicada sin categorías responde `200` con la lista vacía. El `503` va
-sin `Retry-After`: hoy nada reintenta solo después de un arranque fallido.
+cero categorías: una versión aplicada sin categorías responde `200` con la lista vacía. Desde el
+issue #35, el `503` lleva `Retry-After` con el intervalo de la comprobación periódica en segundos
+(DP-04), que es la que vuelve a intentar el snapshot; con la periódica apagada no va.
 
 ## Respaldo en las consignas
 

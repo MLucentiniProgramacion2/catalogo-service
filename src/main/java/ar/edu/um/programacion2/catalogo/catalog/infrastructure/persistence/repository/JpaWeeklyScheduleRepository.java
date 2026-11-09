@@ -1,6 +1,7 @@
 package ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.repository;
 
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.entity.WeeklyScheduleEntity;
+import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -18,4 +19,7 @@ public interface JpaWeeklyScheduleRepository extends JpaRepository<WeeklySchedul
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("delete from WeeklyScheduleEntity")
     int deleteAllRows();
+
+    /** Los horarios habilitados de un profesional (CU-07), sin orden: lo pone el dominio. */
+    List<WeeklyScheduleEntity> findByProfessionalIdAndEnabledTrue(Long professionalId);
 }

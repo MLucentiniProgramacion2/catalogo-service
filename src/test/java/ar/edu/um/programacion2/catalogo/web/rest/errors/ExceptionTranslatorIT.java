@@ -169,4 +169,16 @@ class ExceptionTranslatorIT {
             .andExpect(jsonPath("$.message").value("error.http.500"))
             .andExpect(jsonPath("$.title").value("Internal Server Error"));
     }
+
+    @Test
+    void unHeaderQueRechazaElFirewallEsUn400QueNoRepiteElValor() throws Exception {
+        // El mensaje de RequestRejectedException trae el valor rechazado: antes salía en el detail de un 500.
+        mockMvc
+            .perform(get("/api/exception-translator-test/request-header").header("X-Prueba", "valor\r\nINFO linea falsa"))
+            .andExpect(status().isBadRequest())
+            .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.message").value("error.http.400"))
+            .andExpect(jsonPath("$.detail").value(ExceptionTranslator.REQUEST_REJECTED_DETAIL))
+            .andExpect(content().string(not(containsString("linea falsa"))));
+    }
 }

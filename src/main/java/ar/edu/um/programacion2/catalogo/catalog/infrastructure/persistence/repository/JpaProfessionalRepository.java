@@ -3,6 +3,7 @@ package ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.repo
 import ar.edu.um.programacion2.catalogo.catalog.infrastructure.persistence.entity.ProfessionalEntity;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -46,4 +47,8 @@ public interface JpaProfessionalRepository extends JpaRepository<ProfessionalEnt
     @Override
     @EntityGraph(attributePaths = "category")
     Page<ProfessionalEntity> findAll(Specification<ProfessionalEntity> spec, Pageable pageable);
+
+    /** Un profesional con su categoría en la misma consulta (CU-07): sin el grafo, la categoría {@code LAZY} sería otra. */
+    @EntityGraph(attributePaths = "category")
+    Optional<ProfessionalEntity> findWithCategoryById(Long id);
 }

@@ -26,6 +26,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageConversionException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.web.firewall.RequestRejectedException;
 import org.springframework.web.ErrorResponse;
 import org.springframework.validation.FieldError;
 import org.springframework.web.ErrorResponseException;
@@ -65,6 +66,9 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
      * lo limpia en producción. El detalle de cada campo va en {@code fieldErrors}.
      */
     static final String VALIDATION_DETAIL = "Invalid request parameters";
+
+    /** El {@code detail} de un pedido que rechazó el firewall de Spring Security: fijo, sin el valor rechazado. */
+    static final String REQUEST_REJECTED_DETAIL = "The request contains a header or a path with characters that are not allowed";
 
     /**
      * Mensaje fijo de un {@code fieldError} cuyo valor no se pudo convertir al tipo del campo (como {@code page=abc}).
@@ -260,6 +264,8 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
 
     private String getCustomizedErrorDetails(Throwable err) {
         if (err instanceof MethodArgumentNotValidException) return VALIDATION_DETAIL;
+        // El mensaje del firewall repite el valor rechazado: lo que mandó el cliente no vuelve en la respuesta.
+        if (err instanceof RequestRejectedException) return REQUEST_REJECTED_DETAIL;
         Collection<String> activeProfiles = List.of(env.getActiveProfiles());
         if (activeProfiles.contains(JHipsterConstants.SPRING_PROFILE_PRODUCTION)) {
             if (err instanceof HttpMessageConversionException) return "Unable to convert http message";
@@ -275,6 +281,9 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
         if (err instanceof ConcurrencyFailureException) return HttpStatus.CONFLICT;
         if (err instanceof BadCredentialsException) return HttpStatus.UNAUTHORIZED;
         if (err instanceof ConstraintViolationException) return HttpStatus.BAD_REQUEST;
+        // Cambio sobre JHipster (issue #35): el firewall de Spring Security rechaza un header o una ruta con caracteres
+        // no permitidos (por ejemplo \r\n en X-User-Login). Es un error del cliente, no un 500.
+        if (err instanceof RequestRejectedException) return HttpStatus.BAD_REQUEST;
         return null;
     }
 

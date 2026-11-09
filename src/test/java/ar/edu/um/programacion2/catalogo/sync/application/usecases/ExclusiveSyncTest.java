@@ -96,6 +96,47 @@ class ExclusiveSyncTest {
     }
 
     @Test
+    void sinEsperarConLaExclusionLibreCorre() {
+        ExclusiveSync exclusiveSync = new ExclusiveSync(new InMemorySyncLock(Duration.ofSeconds(30)), syncErrorRecorder);
+
+        assertThat(exclusiveSync.runIfFree(SyncTrigger.PERIODIC, () -> 7L)).contains(7L);
+
+        verifyNoInteractions(syncErrorRecorder);
+    }
+
+    @Test
+    void sinEsperarConOtraEnCursoSeSalteaSinRegistrarNada() {
+        // Con la espera larga: runIfFree no la usa. Saltear no es un error: no hay LOCK_TIMEOUT.
+        InMemorySyncLock lock = new InMemorySyncLock(Duration.ofSeconds(30));
+        ExclusiveSync exclusiveSync = new ExclusiveSync(lock, syncErrorRecorder);
+        AtomicBoolean corrio = new AtomicBoolean();
+
+        Optional<Boolean> resultado;
+        try (SyncLockHolder otra = SyncLockHolder.hold(lock)) {
+            resultado = exclusiveSync.runIfFree(SyncTrigger.PERIODIC, () -> {
+                corrio.set(true);
+                return true;
+            });
+        }
+
+        assertThat(resultado).isEmpty();
+        assertThat(corrio).isFalse();
+        verifyNoInteractions(syncErrorRecorder);
+    }
+
+    @Test
+    void sinEsperarConElHiloInterrumpidoConservaLaInterrupcionSinRegistrarNada() throws Exception {
+        // En el apagado: la pasada no empieza y no deja un "interrumpido" en el estado.
+        when(syncLock.tryRunExclusively(any())).thenThrow(new InterruptedException());
+        ExclusiveSync exclusiveSync = new ExclusiveSync(syncLock, syncErrorRecorder);
+
+        assertThat(exclusiveSync.runIfFree(SyncTrigger.PERIODIC, () -> true)).isEmpty();
+
+        assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        verifyNoInteractions(syncErrorRecorder);
+    }
+
+    @Test
     void informaSiHayUnaSincronizacionCorriendoSinTomarLaExclusion() {
         when(syncLock.isHeld()).thenReturn(true);
 
