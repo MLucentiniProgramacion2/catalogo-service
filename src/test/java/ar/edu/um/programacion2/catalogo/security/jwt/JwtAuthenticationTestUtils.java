@@ -73,6 +73,29 @@ public class JwtAuthenticationTestUtils {
         return jwtEncoder(jwtKey).encode(JwtEncoderParameters.from(jwsHeader, builder.build())).getTokenValue();
     }
 
+    /**
+     * El JWT técnico de servicio con la forma que emite turnos (DPT-16): {@code sub} y {@code iss} {@code turnos-service},
+     * {@code aud} {@code [catalogo-service]}, {@code auth} {@code ROLE_SERVICE} y 5 min de vida. {@code ajustes} corre al
+     * final, para cambiar o sacar un claim ({@code claims(c -> c.remove("aud"))}).
+     */
+    public static String createServiceToken(String jwtKey, Consumer<JwtClaimsSet.Builder> ajustes) {
+        return createSignedToken(jwtKey, "turnos-service", claims -> {
+            Instant now = Instant.now();
+            claims
+                .claim(AUTHORITIES_CLAIM, "ROLE_SERVICE")
+                .audience(List.of("catalogo-service"))
+                .issuer("turnos-service")
+                .issuedAt(now)
+                .expiresAt(now.plusSeconds(300));
+            ajustes.accept(claims);
+        });
+    }
+
+    /** El JWT técnico de servicio válido, sin ajustes. */
+    public static String createServiceToken(String jwtKey) {
+        return createServiceToken(jwtKey, claims -> {});
+    }
+
     public static String createTokenWithDifferentSignature() {
         JwtEncoder encoder = jwtEncoder("Xfd54a45s65fds737b9aafcb3412e07ed99b267f33413274720ddbb7f6c5e64e9f14075f2d7ed041592f0b7657baf8");
 
