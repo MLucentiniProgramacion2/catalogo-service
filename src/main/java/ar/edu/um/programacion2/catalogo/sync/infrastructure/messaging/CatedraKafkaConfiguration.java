@@ -22,6 +22,8 @@ import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.ContainerProperties.AckMode;
 import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.listener.ListenerExecutionFailedException;
+import org.springframework.kafka.listener.RetryListener;
 import org.springframework.util.backoff.BackOff;
 import org.springframework.util.backoff.BackOffExecution;
 
@@ -92,16 +94,34 @@ public class CatedraKafkaConfiguration {
             new CatalogEventRecoverer(syncService),
             backOff(syncProperties.getRetry().getDelays())
         );
-        errorHandler.setRetryListeners((message, failure, attempt) ->
+        errorHandler.setRetryListeners(retryListener());
+        return errorHandler;
+    }
+
+    /** Deja en el log cada intento fallido, con la falla real (§18.4). */
+    static RetryListener retryListener() {
+        return (message, failure, attempt) ->
             LOG.warn(
                 "Aviso de catálogo: falló el intento {} (partición {}, offset {}): {}",
                 attempt,
                 message.partition(),
                 message.offset(),
-                failure.getCause()
-            )
-        );
-        return errorHandler;
+                describe(failure)
+            );
+    }
+
+    /**
+     * La clase y el mensaje de la falla real. Lo que lanza el listener llega envuelto en
+     * {@link ListenerExecutionFailedException}: se desenvuelve solo esa. Lo demás llega tal cual: con {@code AckMode.RECORD},
+     * el {@code commitSync} del offset corre en el mismo {@code try} que el listener ({@code invokeOnMessage} llama a
+     * {@code ackCurrent} en {@code KafkaMessageListenerContainer}), así que una {@code CommitFailedException} (por ejemplo,
+     * si el consumidor quedó fuera del grupo) llega sin envolver y sin causa. Loguear {@code getCause()} daba {@code null}.
+     * <p>
+     * Es log, no una respuesta REST: la clase y el mensaje sirven para el diagnóstico y no llevan credenciales.
+     */
+    static String describe(Throwable failure) {
+        Throwable real = failure instanceof ListenerExecutionFailedException && failure.getCause() != null ? failure.getCause() : failure;
+        return real.getMessage() == null ? real.getClass().getName() : real.getClass().getName() + ": " + real.getMessage();
     }
 
     /** El bean se llama así para que {@code @KafkaListener} lo use sin nombrarlo y la autoconfiguración no cree otro. */

@@ -98,6 +98,18 @@ sale como excepción.
 Cada intento queda en el log con un `RetryListener`, y al agotarse `CatalogEventRecoverer` registra
 `EVENT_PROCESSING_FAILED` en CU-09.
 
+**Una falla del commit del offset también llega acá** (issue #35). Con `AckMode.RECORD`, el contenedor
+confirma en el mismo `try` que invoca al listener: en `KafkaMessageListenerContainer.ListenerConsumer` de
+Spring Kafka 4.1.1, `doInvokeRecordListener` llama a `invokeOnMessage`, que corre el listener y después
+`ackCurrent` → `commitOffsets` → `commitSync` (`syncCommits` es `true` por defecto); el `catch` de ese
+`try` llama a `invokeErrorHandler`. Así que una `CommitFailedException` (por ejemplo, si el consumidor
+quedó fuera del grupo porque la máquina estuvo suspendida más que `max.poll.interval.ms`) pasa por el
+`DefaultErrorHandler` como cualquier falla: se reintenta el aviso, y la barrera del `eventId` frena la
+segunda aplicación porque los datos ya se habían confirmado. Lo que lanza el listener llega envuelto en
+`ListenerExecutionFailedException`; la falla del commit llega **sin envolver y sin causa**. Por eso el
+`RetryListener` desenvuelve solo `ListenerExecutionFailedException` y loguea la clase y el mensaje de la
+falla real: antes logueaba `getCause()`, que en ese caso daba `null`.
+
 **El recoverer nunca lanza.** Medido: si lanza, el aviso se vuelve a entregar sin fin (18 entregas en
 9 s, offset sin moverse). Si no puede registrar el error, lo deja en el log y el offset se confirma
 igual.
