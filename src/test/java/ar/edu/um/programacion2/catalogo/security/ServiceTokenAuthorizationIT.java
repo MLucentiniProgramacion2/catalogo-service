@@ -12,10 +12,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import ar.edu.um.programacion2.catalogo.IntegrationTest;
+import ar.edu.um.programacion2.catalogo.sync.SyncTestDatabase;
+import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -29,6 +32,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -49,38 +53,55 @@ class ServiceTokenAuthorizationIT {
 
     static final String RUTA_DE_SERVICIO = "/api/service/prueba";
 
+    /** La agenda de CU-07, con la base vacía: si pasa la seguridad, responde 503. */
+    static final String RUTA_DE_LA_AGENDA = "/api/service/professionals/15/agenda";
+
     @Autowired
     private MockMvc mvc;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
+
+    @Autowired
+    private EntityManager em;
 
     @Value("${jhipster.security.authentication.jwt.base64-secret}")
     private String jwtKey;
 
+    @BeforeEach
+    void baseVacia() {
+        SyncTestDatabase.reset(transactionTemplate, em);
+    }
+
     @Test
     void elTokenDeServicioDeTurnosPasa() throws Exception {
         pedir(get(RUTA_DE_SERVICIO), createServiceToken(jwtKey)).andExpect(status().isNoContent());
+        pedir(get(RUTA_DE_LA_AGENDA), createServiceToken(jwtKey)).andExpect(status().isServiceUnavailable());
     }
 
-    @Test
-    void sinTokenResponde401() throws Exception {
-        mvc.perform(get(RUTA_DE_SERVICIO)).andExpect(status().isUnauthorized());
+    @ParameterizedTest
+    @ValueSource(strings = { RUTA_DE_SERVICIO, RUTA_DE_LA_AGENDA })
+    void sinTokenResponde401(String ruta) throws Exception {
+        mvc.perform(get(ruta)).andExpect(status().isUnauthorized());
     }
 
-    @Test
-    void conUnTokenVencidoResponde401() throws Exception {
-        pedir(get(RUTA_DE_SERVICIO), createExpiredToken(jwtKey)).andExpect(status().isUnauthorized());
+    @ParameterizedTest
+    @ValueSource(strings = { RUTA_DE_SERVICIO, RUTA_DE_LA_AGENDA })
+    void conUnTokenVencidoResponde401(String ruta) throws Exception {
+        pedir(get(ruta), createExpiredToken(jwtKey)).andExpect(status().isUnauthorized());
     }
 
-    @Test
-    void conLaFirmaInvalidaResponde401() throws Exception {
-        pedir(get(RUTA_DE_SERVICIO), createTokenWithDifferentSignature()).andExpect(status().isUnauthorized());
+    @ParameterizedTest
+    @ValueSource(strings = { RUTA_DE_SERVICIO, RUTA_DE_LA_AGENDA })
+    void conLaFirmaInvalidaResponde401(String ruta) throws Exception {
+        pedir(get(ruta), createTokenWithDifferentSignature()).andExpect(status().isUnauthorized());
     }
 
-    @Test
-    void unTokenDeServicioSinExpResponde401() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = { RUTA_DE_SERVICIO, RUTA_DE_LA_AGENDA })
+    void unTokenDeServicioSinExpResponde401(String ruta) throws Exception {
         // Sin exp no hay vigencia que validar: lo rechaza el decoder, como a uno vencido, antes de la regla.
-        pedir(get(RUTA_DE_SERVICIO), createServiceToken(jwtKey, claims -> claims.claims(c -> c.remove("exp")))).andExpect(
-            status().isUnauthorized()
-        );
+        pedir(get(ruta), createServiceToken(jwtKey, claims -> claims.claims(c -> c.remove("exp")))).andExpect(status().isUnauthorized());
     }
 
     static Stream<Arguments> tokensConFirmaValidaQueNoSonDeServicio() {
@@ -102,6 +123,7 @@ class ServiceTokenAuthorizationIT {
     @MethodSource("tokensConFirmaValidaQueNoSonDeServicio")
     void unTokenConFirmaValidaQueNoEsElDeServicioResponde403(String caso, Consumer<JwtClaimsSet.Builder> ajustes) throws Exception {
         pedir(get(RUTA_DE_SERVICIO), token(ajustes)).andExpect(status().isForbidden());
+        pedir(get(RUTA_DE_LA_AGENDA), token(ajustes)).andExpect(status().isForbidden());
     }
 
     @ParameterizedTest

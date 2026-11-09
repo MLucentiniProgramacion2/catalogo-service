@@ -1,6 +1,7 @@
 package ar.edu.um.programacion2.catalogo.catalog.infrastructure.web.controller;
 
 import ar.edu.um.programacion2.catalogo.catalog.application.exception.CatalogNotInitializedException;
+import ar.edu.um.programacion2.catalogo.catalog.application.exception.ProfessionalNotFoundException;
 import java.time.Duration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -24,6 +25,9 @@ public final class CatalogErrorResponses {
     /** {@code code} del 503 con la base vacía: la app decide por status y code, nunca por {@code detail} (contrato §13). */
     public static final String CATALOG_NOT_INITIALIZED = "CATALOG_NOT_INITIALIZED";
 
+    /** {@code code} del 404 de CU-07: el profesional no está en la copia local. Es el mismo nombre que usa la cátedra. */
+    public static final String PROFESSIONAL_NOT_FOUND = "PROFESSIONAL_NOT_FOUND";
+
     private static final String CODE = "code";
 
     private CatalogErrorResponses() {}
@@ -46,6 +50,16 @@ public final class CatalogErrorResponses {
         ErrorResponseException response = new ErrorResponseException(HttpStatus.SERVICE_UNAVAILABLE, problem, e);
         e.getRetryAfter().ifPresent(retryAfter -> response.getHeaders().set(HttpHeaders.RETRY_AFTER, String.valueOf(seconds(retryAfter))));
         return response;
+    }
+
+    /** {@code 404}: el profesional pedido no está en la copia local (CU-07, flujo 4a). */
+    public static ErrorResponseException professionalNotFound(ProfessionalNotFoundException e) {
+        ProblemDetailWithCause problem = ProblemDetailWithCauseBuilder.instance()
+            .withStatus(HttpStatus.NOT_FOUND.value())
+            .withDetail(e.getMessage())
+            .withProperty(CODE, PROFESSIONAL_NOT_FOUND)
+            .build();
+        return new ErrorResponseException(HttpStatus.NOT_FOUND, problem, e);
     }
 
     /** {@code Retry-After} va en segundos enteros (RFC 9110): se redondea para arriba, para no prometer antes de tiempo. */

@@ -2,6 +2,7 @@ package ar.edu.um.programacion2.catalogo.catalog.infrastructure.web.controller;
 
 import static ar.edu.um.programacion2.catalogo.security.SecurityUtils.AUTHORITIES_CLAIM;
 import static ar.edu.um.programacion2.catalogo.security.jwt.JwtAuthenticationTestUtils.BEARER;
+import static ar.edu.um.programacion2.catalogo.security.jwt.JwtAuthenticationTestUtils.createServiceToken;
 import static ar.edu.um.programacion2.catalogo.security.jwt.JwtAuthenticationTestUtils.createSignedToken;
 import static org.springframework.http.HttpHeaders.AUTHORIZATION;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -14,6 +15,7 @@ import ar.edu.um.programacion2.catalogo.sync.SyncTestDatabase;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +27,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * El 503 con la base vacía (DP-03) con la comprobación periódica prendida: lleva {@code Retry-After} con su intervalo en
- * segundos, porque es la que vuelve a intentar el snapshot (DP-04). Sale igual en todas las consultas sobre la copia.
+ * segundos, porque es la que vuelve a intentar el snapshot (DP-04). Sale igual en todas las consultas sobre la copia:
+ * CU-05, CU-06 y la agenda de CU-07.
  * <p>
  * Con la periódica apagada (la configuración de {@code src/test}) no va el header: lo verifican los 503 de
  * {@code CategoryControllerIT} y {@code ProfessionalControllerIT}. La tarea queda registrada con 7 min y no corre
@@ -59,6 +62,15 @@ class CatalogNotInitializedRetryAfterIT {
     void conLaBaseVaciaResponde503ConElIntervaloDeLaPeriodicaComoRetryAfter(String ruta) throws Exception {
         String token = createSignedToken(jwtKey, "ana.perez", claims -> claims.claim(AUTHORITIES_CLAIM, "ROLE_USER"));
 
+        esperar503ConRetryAfter(ruta, token);
+    }
+
+    @Test
+    void laAgendaDeTurnosRespondeElMismo503() throws Exception {
+        esperar503ConRetryAfter("/api/service/professionals/15/agenda", createServiceToken(jwtKey));
+    }
+
+    private void esperar503ConRetryAfter(String ruta, String token) throws Exception {
         mvc
             .perform(get(ruta).header(AUTHORIZATION, BEARER + token))
             .andExpect(status().isServiceUnavailable())
