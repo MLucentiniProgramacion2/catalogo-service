@@ -55,11 +55,10 @@ class TriggerManualSyncUseCaseImplTest {
     @BeforeEach
     void armarCasoDeUso() {
         useCase = new TriggerManualSyncUseCaseImpl(
-            getSyncStatusUseCase,
+            new LocalVersionReader(getSyncStatusUseCase, syncErrorRecorder),
             executeFullSyncUseCase,
             incorporateChangesUseCase,
-            new ExclusiveSync(lock, syncErrorRecorder),
-            syncErrorRecorder
+            new ExclusiveSync(lock, syncErrorRecorder)
         );
     }
 
@@ -177,7 +176,7 @@ class TriggerManualSyncUseCaseImplTest {
         ManualSyncResult resultado = useCase.triggerManualSync(SyncMode.NORMAL);
 
         assertThat(resultado).isEqualTo(
-            new ManualSyncResult.Failed(null, null, SyncErrorType.DATABASE_UNAVAILABLE, TriggerManualSyncUseCaseImpl.VERSION_UNREADABLE, 0)
+            new ManualSyncResult.Failed(null, null, SyncErrorType.DATABASE_UNAVAILABLE, LocalVersionReader.VERSION_UNREADABLE, 0)
         );
         verifyNoInteractions(incorporateChangesUseCase);
     }
@@ -193,12 +192,12 @@ class TriggerManualSyncUseCaseImplTest {
                 null,
                 null,
                 SyncErrorType.DATABASE_UNAVAILABLE,
-                TriggerManualSyncUseCaseImpl.VERSION_UNREADABLE,
+                LocalVersionReader.VERSION_UNREADABLE,
                 0
             )
         );
         verify(executeFullSyncUseCase, never()).executeFullSync(SyncTrigger.MANUAL);
-        verify(syncErrorRecorder).record(SyncErrorType.DATABASE_UNAVAILABLE, TriggerManualSyncUseCaseImpl.VERSION_UNREADABLE);
+        verify(syncErrorRecorder).record(SyncErrorType.DATABASE_UNAVAILABLE, LocalVersionReader.VERSION_UNREADABLE);
         assertThat(lock.isHeld()).isFalse();
     }
 
