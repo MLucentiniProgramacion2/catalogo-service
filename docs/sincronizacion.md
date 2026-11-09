@@ -187,8 +187,9 @@ El modelo de datos completo del servicio va en la documentación de contratos y 
 - `localVersion` y `lastSuccess` (fecha, camino y disparador);
 - `remote`: la última versión publicada que se leyó y cuándo, sin consultar Redis en cada pedido;
 - `inProgress`, de la exclusión en memoria;
-- `lastError` con su tipo y una descripción sin datos sensibles, y `resolved`, que es `true` si después
-  del error hubo un éxito o una lectura de la metadata (ver CU-09).
+- `lastError` con su tipo y una descripción sin datos sensibles, y `resolved`, que es `true` si hay versión
+  local y después del error hubo un éxito o una lectura de la metadata (ver CU-09). Sin versión local
+  nunca está resuelto: con la base vacía el catálogo no sirve.
 
 **El log**, en INFO: cada sincronización aplicada (`Sincronización (KAFKA): ...`), cada snapshot, y al
 arrancar `Comprobación periódica de versión cada 5m`. Los errores en ERROR y cada reintento en WARN. Una

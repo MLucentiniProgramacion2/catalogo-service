@@ -311,6 +311,25 @@ class SyncStatusTest {
         }
 
         @Test
+        void sinVersionLocalNuncaEstaResueltoAunqueRedisHayaRespondidoDespues() {
+            // La base vaciada a mano con la versión remota ya registrada: el catálogo no sirve, así que no está resuelto.
+            SyncStatus estado = new SyncStatus(
+                null,
+                null,
+                null,
+                null,
+                12L,
+                DESPUES,
+                ERROR,
+                SyncErrorType.CATEDRA_UNAVAILABLE,
+                "La cátedra no estuvo disponible"
+            );
+
+            assertThat(estado.getRemoteVersionCheckedAt()).isAfter(estado.getLastErrorAt());
+            assertThat(estado.isLastErrorResolved()).isFalse();
+        }
+
+        @Test
         void sinCopiaYConElSnapshotFallidoSigueVigente() {
             SyncStatus estado = SyncStatus.initial();
             estado.recordError(SyncErrorType.CATEDRA_UNAVAILABLE, "La cátedra no estuvo disponible", ERROR);

@@ -139,6 +139,21 @@ class SyncStatusControllerIT {
     }
 
     @Test
+    void sinVersionLocalElErrorNoSeInformaResueltoAunqueRedisHayaRespondidoDespues() throws Exception {
+        // Como quedó la base vaciada a mano en la comprobación manual del #35: versión remota posterior al error, sin copia.
+        modificarEstado(estado -> {
+            estado.recordError(SyncErrorType.CATEDRA_UNAVAILABLE, "La cátedra no estuvo disponible", T1);
+            estado.recordRemoteVersion(12, T2);
+        });
+
+        pedir(token("ROLE_USER"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.localVersion").value((Object) null))
+            .andExpect(jsonPath("$.remote.version").value(12))
+            .andExpect(jsonPath("$.lastError.resolved").value(false));
+    }
+
+    @Test
     void conUnaSincronizacionCorriendoInformaEnCursoSinEsperarla() throws Exception {
         try (SyncLockHolder otra = SyncLockHolder.hold(syncLock)) {
             pedir(token("ROLE_USER")).andExpect(status().isOk()).andExpect(jsonPath("$.inProgress").value(true));

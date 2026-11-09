@@ -97,9 +97,12 @@ Un éxito no borra el último error, y una pasada que encuentra la copia al día
 no cambia `lastSuccess`. Sin otro dato, después de que Redis vuelve la app vería el error como vigente
 hasta la próxima versión publicada. `resolved` lo resuelve sin tocar la base:
 
-> `resolved` es `true` si y solo si `lastSuccess.at` **o** `remote.checkedAt` es **estrictamente
-> posterior** a `lastError.at`.
+> `resolved` es `true` si y solo si **hay versión local** y `lastSuccess.at` **o** `remote.checkedAt` es
+> **estrictamente posterior** a `lastError.at`.
 
+- Sin versión local nunca está resuelto: con la base vacía el catálogo no sirve (CU-05, CU-06 y CU-07
+  responden `503`), aunque Redis haya respondido después del error. Pasa si se vacía la base con la versión
+  remota ya registrada (encontrado en la comprobación manual del #35).
 - Con el mismo instante no cuenta como resuelto.
 - Los tres instantes salen del mismo `Clock` del servicio (UTC), así que se pueden comparar entre sí.
 - Funciona por el orden de CU-03: la versión remota se registra **antes** de aplicar, así que si en la
@@ -113,6 +116,7 @@ hasta la próxima versión publicada. `resolved` lo resuelve sin tocar la base:
 | Se leyó la metadata y después falló CU-04 o CU-02 | `remote` (t1) y después `lastError` (t2 > t1) | `false` |
 | `LOCK_TIMEOUT` y la que tenía la exclusión terminó bien | `lastSuccess` o `remote`, después del error | `true` |
 | Sin copia y el snapshot falló | `lastError` | `false` |
+| Sin copia, aunque `remote.checkedAt` sea posterior al error (la base se vació a mano) | Nada nuevo | `false` |
 
 Cada grupo es `null` entero si no hay datos, nunca a medias. La lectura es una sola fila en una
 transacción de solo lectura; "en curso" se mira antes, así que el peor desfase es informar `inProgress`
