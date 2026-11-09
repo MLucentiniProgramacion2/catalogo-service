@@ -15,12 +15,13 @@ import java.time.Instant;
  * @param inProgress si hay una sincronización corriendo ahora
  * @param lastSuccess última sincronización exitosa
  * @param remote última versión publicada conocida, de la última lectura de metadata; no se consulta Redis en cada pedido
- * @param lastError último error, aunque después haya habido un éxito: cada uno trae su fecha
+ * @param lastError último error, aunque después haya habido un éxito: cada uno trae su fecha, y {@code resolved} dice si
+ *        después hubo un éxito o una lectura de la metadata de Redis (ver {@code SyncStatus.isLastErrorResolved})
  */
 public record SyncStatusResponse(Long localVersion, boolean inProgress, LastSuccess lastSuccess, Remote remote, LastError lastError) {
     public record LastSuccess(Instant at, SyncPath path, SyncTrigger trigger) {}
 
     public record Remote(long version, Instant checkedAt) {}
 
-    public record LastError(Instant at, SyncErrorType type, String description) {}
+    public record LastError(Instant at, SyncErrorType type, String description, boolean resolved) {}
 }

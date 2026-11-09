@@ -186,6 +186,7 @@ class PeriodicSyncIT {
         SyncStatus despuesDelArranque = estado();
         assertThat(despuesDelArranque.getLocalVersion()).isEqualTo(12L);
         assertThat(despuesDelArranque.getLastErrorType()).isEqualTo(SyncErrorType.REDIS_UNAVAILABLE);
+        assertThat(despuesDelArranque.isLastErrorResolved()).isFalse();
 
         periodicSyncTrigger.checkCatalogVersion();
 
@@ -194,6 +195,30 @@ class PeriodicSyncIT {
         assertThat(estado.getLastSuccessPath()).isEqualTo(SyncPath.INCREMENTAL);
         assertThat(estado.getLastSuccessTrigger()).isEqualTo(SyncTrigger.PERIODIC);
         assertThat(estado.getLastSuccessAt()).isAfter(estado.getLastErrorAt());
+        assertThat(estado.isLastErrorResolved()).isTrue();
+    }
+
+    @Test
+    void conRedisCaidoYDespuesLaCopiaAlDiaElErrorQuedaResueltoSinOtroExito() {
+        // Lo que CU-09 informaba mal antes de "resolved": Redis vuelve, no hay nada que aplicar y lastSuccess no cambia.
+        copiaEnLa12();
+        redis().metadata(12, 1);
+        REDIS.getDockerClient().pauseContainerCmd(REDIS.getContainerId()).exec();
+        try {
+            periodicSyncTrigger.checkCatalogVersion();
+        } finally {
+            REDIS.getDockerClient().unpauseContainerCmd(REDIS.getContainerId()).exec();
+        }
+        assertThat(estado().getLastErrorType()).isEqualTo(SyncErrorType.REDIS_UNAVAILABLE);
+        assertThat(estado().isLastErrorResolved()).isFalse();
+
+        periodicSyncTrigger.checkCatalogVersion();
+
+        SyncStatus estado = estado();
+        assertThat(estado.getLastSuccessAt()).isBefore(estado.getLastErrorAt());
+        assertThat(estado.getRemoteVersionCheckedAt()).isAfter(estado.getLastErrorAt());
+        assertThat(estado.getLastErrorType()).isEqualTo(SyncErrorType.REDIS_UNAVAILABLE);
+        assertThat(estado.isLastErrorResolved()).isTrue();
     }
 
     @Test

@@ -68,6 +68,29 @@ public class SyncStatus {
     }
 
     /**
+     * Si el último error ya quedó atrás (CU-09, {@code lastError.resolved}): después de él hubo una sincronización exitosa
+     * o una lectura de la metadata de Redis que se pudo registrar. Lo segundo cuenta porque una pasada que encuentra la
+     * copia al día no aplica nada, así que no cambia {@code lastSuccessAt}: sin esto, después de que Redis vuelve, el error
+     * parecería vigente hasta la próxima versión publicada.
+     * <p>
+     * La comparación es <strong>estricta</strong>: con el mismo instante no cuenta como resuelto. Los dos instantes salen
+     * del mismo {@code Clock} del servicio. Es coherente con el orden de CU-03: la versión remota se registra antes de
+     * aplicar, así que una falla de CU-04 o de CU-02 en la misma pasada queda con fecha posterior y sigue sin resolver.
+     *
+     * @return {@code false} si no hay error registrado
+     */
+    public boolean isLastErrorResolved() {
+        if (lastErrorAt == null) {
+            return false;
+        }
+        return isAfterLastError(lastSuccessAt) || isAfterLastError(remoteVersionCheckedAt);
+    }
+
+    private boolean isAfterLastError(Instant instant) {
+        return instant != null && instant.isAfter(lastErrorAt);
+    }
+
+    /**
      * Registra un snapshot aplicado (CU-02). Acepta cualquier versión, incluso una menor que la local: la versión local
      * tiene que ser exactamente la que corresponde a los datos guardados, y esos datos son los del snapshot.
      */

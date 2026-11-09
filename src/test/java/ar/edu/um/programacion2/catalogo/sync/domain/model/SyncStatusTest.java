@@ -244,4 +244,85 @@ class SyncStatusTest {
         estado.recordSnapshotApplied(version, SyncTrigger.STARTUP, T1);
         return estado;
     }
+
+    /** {@code lastError.resolved} de CU-09: después del error hubo un éxito o una lectura de la metadata registrada. */
+    @Nested
+    class ErrorResuelto {
+
+        private static final Instant ANTES = Instant.parse("2026-11-08T13:00:00Z");
+        private static final Instant ERROR = Instant.parse("2026-11-08T13:10:00Z");
+        private static final Instant DESPUES = Instant.parse("2026-11-08T13:20:00Z");
+
+        @Test
+        void sinErrorNoHayNadaResuelto() {
+            SyncStatus estado = SyncStatus.initial();
+            estado.recordSnapshotApplied(12, SyncTrigger.MANUAL, DESPUES);
+
+            assertThat(estado.isLastErrorResolved()).isFalse();
+        }
+
+        @Test
+        void unErrorSinNadaDespuesSigueVigente() {
+            // Redis caído al leer la metadata: no se escribe la versión remota.
+            SyncStatus estado = conCopiaYVersionRemotaAntes();
+            estado.recordError(SyncErrorType.REDIS_UNAVAILABLE, "Redis de la cátedra no respondió", ERROR);
+
+            assertThat(estado.isLastErrorResolved()).isFalse();
+        }
+
+        @Test
+        void unaSincronizacionExitosaDespuesLoResuelve() {
+            SyncStatus estado = conCopiaYVersionRemotaAntes();
+            estado.recordError(SyncErrorType.REDIS_UNAVAILABLE, "Redis de la cátedra no respondió", ERROR);
+            estado.recordIncrementalApplied(13, SyncTrigger.PERIODIC, DESPUES);
+
+            assertThat(estado.isLastErrorResolved()).isTrue();
+        }
+
+        @Test
+        void unaLecturaDeLaMetadataDespuesLoResuelveAunqueNoSeApliqueNada() {
+            // La copia ya estaba al día cuando Redis volvió: lastSuccess no cambia, pero la lectura prueba que funciona.
+            SyncStatus estado = conCopiaYVersionRemotaAntes();
+            estado.recordError(SyncErrorType.REDIS_UNAVAILABLE, "Redis de la cátedra no respondió", ERROR);
+            estado.recordRemoteVersion(12, DESPUES);
+
+            assertThat(estado.getLastSuccessAt()).isBefore(estado.getLastErrorAt());
+            assertThat(estado.isLastErrorResolved()).isTrue();
+        }
+
+        @Test
+        void unaFallaDespuesDeRegistrarLaVersionRemotaSigueVigente() {
+            // CU-03 registra la versión remota antes de aplicar: si después falla CU-04 o CU-02, el error es posterior.
+            SyncStatus estado = conCopiaYVersionRemotaAntes();
+            estado.recordRemoteVersion(14, ERROR.minusSeconds(1));
+            estado.recordError(SyncErrorType.INCREMENTAL_FAILED, "La base rechazó la versión 13", ERROR);
+
+            assertThat(estado.isLastErrorResolved()).isFalse();
+        }
+
+        @Test
+        void conElMismoInstanteNoCuentaComoResuelto() {
+            SyncStatus estado = SyncStatus.initial();
+            estado.recordSnapshotApplied(12, SyncTrigger.MANUAL, ERROR);
+            estado.recordRemoteVersion(12, ERROR);
+            estado.recordError(SyncErrorType.LOCK_TIMEOUT, "Otra seguía en curso", ERROR);
+
+            assertThat(estado.isLastErrorResolved()).isFalse();
+        }
+
+        @Test
+        void sinCopiaYConElSnapshotFallidoSigueVigente() {
+            SyncStatus estado = SyncStatus.initial();
+            estado.recordError(SyncErrorType.CATEDRA_UNAVAILABLE, "La cátedra no estuvo disponible", ERROR);
+
+            assertThat(estado.isLastErrorResolved()).isFalse();
+        }
+
+        private SyncStatus conCopiaYVersionRemotaAntes() {
+            SyncStatus estado = SyncStatus.initial();
+            estado.recordSnapshotApplied(12, SyncTrigger.MANUAL, ANTES);
+            estado.recordRemoteVersion(12, ANTES);
+            return estado;
+        }
+    }
 }
