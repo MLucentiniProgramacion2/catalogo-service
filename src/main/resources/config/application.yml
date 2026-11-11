@@ -213,6 +213,59 @@ jhipster:
     license-url:
 
 
+# ===================================================================
+# API REST de la cátedra (contrato §3 y §7, ADR 0004). Ver CatedraApiProperties.
+# ===================================================================
+
+catedra:
+  api:
+    # Sin valor real por defecto: si la variable falta o está vacía, la aplicación no arranca.
+    # El ":" vacío es a propósito: sin él, un placeholder sin resolver queda como el texto
+    # literal "${CATEDRA_JWT}", que no está vacío y pasaría la validación.
+    url: ${CATEDRA_API_URL:}
+    token: ${CATEDRA_JWT:}
+    connect-timeout: ${CATEDRA_CONNECT_TIMEOUT:5s}
+    # Plazo total para recibir la respuesta completa (cuerpo incluido), no de inactividad.
+    read-timeout: ${CATEDRA_READ_TIMEOUT:30s}
+  # Consumidor de CatalogUpdated (contrato §15, ADR 0005). Ver CatedraKafkaProperties: el resto de la
+  # configuración está en Java y spring.kafka.* no se usa. Sin valor por defecto, como el token.
+  kafka:
+    bootstrap-servers: ${CATEDRA_KAFKA_BOOTSTRAP_SERVERS:}
+    catalog-topic: ${CATEDRA_KAFKA_CATALOG_TOPIC:}
+    consumer-group: ${CATEDRA_KAFKA_CONSUMER_GROUP:}
+  # Redis de la cátedra, solo lectura (contrato §14, ADR 0006). Ver CatedraRedisProperties: el cliente
+  # se arma en Java y spring.data.redis.* no se usa. Sin valor por defecto, como el token.
+  redis:
+    host: ${CATEDRA_REDIS_HOST:}
+    port: ${CATEDRA_REDIS_PORT:}
+    username: ${CATEDRA_REDIS_USERNAME:}
+    password: ${CATEDRA_REDIS_PASSWORD:}
+    connect-timeout: ${CATEDRA_REDIS_CONNECT_TIMEOUT:5s}
+    command-timeout: ${CATEDRA_REDIS_COMMAND_TIMEOUT:3s}
+
+sync:
+  startup:
+    # CU-01: al arrancar, si la base no tiene versión local, sincroniza con un snapshot.
+    enabled: ${SYNC_STARTUP_ENABLED:true}
+  periodic:
+    # DP-04: cada cuánto se compara la versión local con la publicada en Redis (CU-03), contado desde
+    # que termina la pasada anterior. Mínimo 1m. Si hay otra sincronización en curso, la pasada se
+    # saltea. Es también el Retry-After del 503 con la base vacía (sin la periódica, no hay header).
+    enabled: ${SYNC_PERIODIC_ENABLED:true}
+    interval: ${SYNC_PERIODIC_INTERVAL:5m}
+  retry:
+    # DP-08: esperas antes de cada reintento de una sincronización. La cantidad de reintentos es la
+    # cantidad de esperas: con 1s,2s,4s se intenta hasta 4 veces.
+    delays: ${SYNC_RETRY_DELAYS:1s,2s,4s}
+  lock:
+    # DP-09: cuánto espera un disparador a que termine otra sincronización. Si se supera, termina sin
+    # cambios y registra LOCK_TIMEOUT. El valor cubre el peor caso de CU-03 con Redis (ver SyncProperties).
+    wait-timeout: ${SYNC_LOCK_WAIT_TIMEOUT:12m}
+  incremental:
+    # CU-04: después de este plazo no empieza otra versión ni otro reintento, y sigue un snapshot.
+    # Entra en la cuenta de wait-timeout: si se sube, hay que recalcularla.
+    time-budget: ${SYNC_INCREMENTAL_TIME_BUDGET:60s}
+
 # jhipster-needle-add-application-yaml-document
 ---
 # ===================================================================

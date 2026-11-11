@@ -89,6 +89,45 @@ jhipster:
 # https://www.jhipster.tech/common-application-properties/
 # ===================================================================
 
+catedra:
+  api:
+    # Solo para tests: valores falsos. Nadie escucha en el puerto 1, así que ningún test de
+    # contexto llega a la cátedra real; los tests del cliente usan un servidor simulado.
+    url: http://localhost:1
+    token: token-falso-solo-para-tests
+  kafka:
+    # Solo para tests: valores falsos, y el listener apagado para que cada contexto no se conecte a
+    # un broker que no existe. Lo prenden solo los tests de Kafka, con un broker de Testcontainers.
+    bootstrap-servers: localhost:1
+    catalog-topic: topic-de-test
+    consumer-group: grupo-de-test
+    listener-enabled: false
+  redis:
+    # Solo para tests: valores falsos. La conexión se abre recién con la primera lectura, así que
+    # ningún contexto se conecta; los tests de Redis usan un contenedor (RedisTestServer).
+    host: localhost
+    port: 1
+    username: usuario-falso-solo-para-tests
+    password: clave-falsa-solo-para-tests
+
+sync:
+  startup:
+    # Apagado en los tests: cada contexto llamaría a la cátedra falsa al levantar, esperaría los
+    # reintentos y escribiría sync_status. Solo lo prenden los tests de CU-01.
+    enabled: false
+  periodic:
+    # Apagada en los tests, como el arranque: cada contexto programaría una tarea que llama a Redis.
+    # Solo la prenden los tests de DP-04, con un intervalo largo, y llaman al disparador a mano.
+    enabled: false
+  retry:
+    # Esperas cortas para que ningún test de integración duerma 7 s. Las de verdad (1 s, 2 s y 4 s)
+    # las verifican los unitarios del caso de uso, sin dormir.
+    delays: 10ms,20ms,40ms
+  lock:
+    # Corta para que los tests que dejan vencer la espera no duerman 12 min. La de verdad la fija
+    # SyncPropertiesTest.
+    wait-timeout: 200ms
+
 application:
   liquibase:
     # Igual que en el application.yml principal, que este archivo tapa en los tests: Liquibase

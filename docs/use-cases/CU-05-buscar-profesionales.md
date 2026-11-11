@@ -75,6 +75,110 @@ El usuario ejecuta una búsqueda desde la app.
   `INVALID_SLOT`, `SLOT_ALREADY_RESERVED` o `SLOT_ALREADY_HELD` (contrato §9 y §13.1).
 - **DP-06:** los endpoints de usuario rechazan el token técnico de servicio.
 
+## Contrato del endpoint (issue #27)
+
+```http
+GET /api/professionals?categoryId=&name=&enabled=&day=&from=&to=&page=&size=
+Authorization: Bearer <jwt-de-usuario>
+```
+
+| Parámetro | Tipo | Regla |
+| --- | --- | --- |
+| `categoryId` | número | Opcional. Una categoría que no existe da lista vacía, no `404`. |
+| `name` | texto | Opcional. Hasta 100 caracteres, contados sobre el texto **recibido** (antes de recortar espacios). Ver abajo. |
+| `enabled` | `true` / `false` | Opcional. Si se omite, se toma `true` (DP-01). Distinto de CU-06, donde omitirlo significa "todas". |
+| `day` | `MONDAY` a `SUNDAY` | Opcional. Solo esos valores, en mayúsculas, como el contrato §7. |
+| `from`, `to` | hora | Opcionales y solo con `day`. `HH:mm` o `HH:mm:ss` (contrato §4). Se puede mandar uno solo. |
+| `page` | entero ≥ 0 | Por defecto `0`. |
+| `size` | entero de 1 a 100 | Por defecto `20`. |
+
+- **Disponibilidad (paso 4, DP-01):** aparece el profesional que tiene al menos un horario semanal **habilitado** de
+  ese día que se superpone con la franja. Sin franja, alcanza con cualquier horario habilitado de ese día. No mira
+  ocupaciones ni turnos: los turnos libres los arma el servicio de turnos.
+  - Los horarios y la franja son intervalos **semiabiertos** `[inicio, fin)`: se superponen si `start < to` y
+    `end > from`. Un horario que termina a las 12:00 no se superpone con una franja que empieza a las 12:00.
+  - Con solo `from` o solo `to`, la franja queda abierta del otro lado.
+  - `from` tiene que ser anterior a `to`: con `from == to`, `[from, to)` está vacía y la búsqueda da `400`.
+  - Un horario con `startTime >= endTime` (el contrato no lo impide) es el intervalo vacío `[start, end)`: no se
+    superpone con ninguna franja y, sin franja, no cubre ninguna hora del día. No cuenta nunca, con franja o sin
+    ella. La regla no depende de los turnos: un horario con `slotDurationMinutes <= 0` sí cuenta.
+  - Un profesional con varios horarios que cumplen aparece una sola vez y cuenta una vez en `totalElements`.
+
+- **Nombre:** se busca el texto, sin distinguir mayúsculas, dentro de "nombre apellido" (los dos campos unidos por un
+  espacio): `ana pe` encuentra a "Ana Perez", pero `perez ana` no. Se recortan los espacios de los extremos; vacío o
+  de solo espacios cuenta como filtro ausente. `%` y `_` se buscan como letras, no como comodines. Las tildes cuentan:
+  `ÁNGEL` encuentra a "Ángel", pero `Perez` no encuentra a "Pérez" (ignorar tildes necesitaría una extensión de
+  PostgreSQL).
+- **Mayúsculas con tilde:** las pasa a minúsculas PostgreSQL, según el locale de la base. Con el de la imagen oficial
+  (`en_US.utf8`) funciona; con una base creada con locale `C`, solo cambiarían las letras ASCII.
+- **Orden por `id`:** es único, así que el orden es total y estable entre páginas (un profesional no aparece en dos ni
+  en ninguna), y no depende de la collation. Si hace falta, la app reordena la página.
+- **Categoría deshabilitada:** un profesional habilitado de una categoría deshabilitada aparece con `enabled` omitido,
+  porque DP-01 mira el estado del profesional. La respuesta informa `category.enabled` y la app decide qué mostrar.
+  Respaldo: la matriz §13.1 del contrato no tiene un error de hold por categoría deshabilitada, solo
+  `PROFESSIONAL_DISABLED`.
+
+Respuesta `200 OK`:
+
+```json
+{
+  "catalogVersion": 1,
+  "page": 0,
+  "size": 20,
+  "totalElements": 24,
+  "totalPages": 2,
+  "professionals": [
+    {
+      "id": 1,
+      "firstName": "Ana",
+      "lastName": "Perez",
+      "enabled": true,
+      "category": { "id": 101, "name": "Clinica medica", "enabled": true }
+    }
+  ]
+}
+```
+
+`catalogVersion`, la página y `totalElements` salen de la misma transacción (`REPEATABLE READ`): un snapshot confirmado
+en el medio no los mezcla. Una página fuera de rango (por ejemplo `page=50`) responde `200` con `professionals: []` y
+los totales correctos; si ningún profesional cumple los filtros, también `200` con la lista vacía (5a).
+
+| Caso | Status | Cuerpo |
+| --- | --- | --- |
+| Sin token, firma inválida o vencido (2a) | `401` | vacío (Spring Security) |
+| Token de servicio o sin `ROLE_USER`/`ROLE_ADMIN` (2b) | `403` | vacío (Spring Security) |
+| Parámetro inválido (2c): fuera de rango, no convertible, `name` de más de 100 caracteres, día inexistente o en minúsculas, hora mal formada, `from` no anterior a `to`, franja sin día | `400` | `problem+json`, `code: VALIDATION_ERROR` y `fieldErrors` |
+| Sin versión aplicada (3a) | `503` | `problem+json`, `code: CATALOG_NOT_INITIALIZED` y `Retry-After` con el intervalo de la comprobación periódica en segundos (sin el header si está apagada; issue #35) |
+
+El `400` tiene la forma del contrato §13, con un `fieldError` por parámetro inválido. Ni el `detail` ni los mensajes
+repiten el valor recibido:
+
+```json
+{
+  "type": "https://www.jhipster.tech/problem/constraint-violation",
+  "title": "Method argument not valid",
+  "status": 400,
+  "detail": "Invalid request parameters",
+  "message": "error.validation",
+  "path": "/api/professionals",
+  "code": "VALIDATION_ERROR",
+  "fieldErrors": [
+    { "objectName": "professionalSearchParams", "field": "page", "message": "must be greater than or equal to 0" },
+    { "objectName": "professionalSearchParams", "field": "size", "message": "Failed to convert value" }
+  ]
+}
+```
+
+Las reglas que combinan parámetros tienen su propio `field`:
+
+| Regla | `field` | `message` |
+| --- | --- | --- |
+| `from` no anterior a `to` | `timeRangeOrdered` | `from must be before to` |
+| `from` o `to` sin `day` | `timeRangeHasDay` | `from and to require day` |
+
+Como en el contrato de la cátedra, la app decide por `status` y `code`, nunca por `detail` ni por el texto de
+`fieldErrors`.
+
 ## Respaldo en las consignas
 
 - Enunciado §4.1: filtros mínimos por categoría, nombre, estado habilitado y disponibilidad,

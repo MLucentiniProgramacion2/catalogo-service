@@ -14,6 +14,7 @@ import org.apache.commons.lang3.Strings;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.dao.ConcurrencyFailureException;
@@ -25,7 +26,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageConversionException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.web.firewall.RequestRejectedException;
 import org.springframework.web.ErrorResponse;
+import org.springframework.validation.FieldError;
 import org.springframework.web.ErrorResponseException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -49,6 +52,29 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
     private static final String FIELD_ERRORS_KEY = "fieldErrors";
     private static final String MESSAGE_KEY = "message";
     private static final String PATH_KEY = "path";
+    private static final String CODE_KEY = "code";
+
+    /**
+     * {@code code} de los 400 de validación ({@code MethodArgumentNotValidException}), como en la matriz §13.1 del
+     * contrato ("cualquier body validado"). Cambio sobre lo que genera JHipster.
+     */
+    static final String VALIDATION_ERROR_CODE = "VALIDATION_ERROR";
+
+    /**
+     * {@code detail} fijo de los 400 de validación. Cambio sobre lo que genera JHipster: el {@code getMessage()} de
+     * Spring, que se usaba como {@code detail}, trae los valores rechazados y nombres de clases y métodos; JHipster solo
+     * lo limpia en producción. El detalle de cada campo va en {@code fieldErrors}.
+     */
+    static final String VALIDATION_DETAIL = "Invalid request parameters";
+
+    /** El {@code detail} de un pedido que rechazó el firewall de Spring Security: fijo, sin el valor rechazado. */
+    static final String REQUEST_REJECTED_DETAIL = "The request contains a header or a path with characters that are not allowed";
+
+    /**
+     * Mensaje fijo de un {@code fieldError} cuyo valor no se pudo convertir al tipo del campo (como {@code page=abc}).
+     * Cambio sobre lo que genera JHipster: el mensaje de Spring repite el valor recibido y los nombres de las clases.
+     */
+    static final String BINDING_FAILURE_MESSAGE = "Failed to convert value";
     private static final boolean CAUSAL_CHAIN_ENABLED = false;
 
     private static final Logger LOG = LoggerFactory.getLogger(ExceptionTranslator.class);
@@ -67,6 +93,33 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
         LOG.debug("Converting Exception to Problem Details:", ex);
         ProblemDetailWithCause pdCause = wrapAndCustomizeProblem(ex, request);
         return handleExceptionInternal((Exception) ex, pdCause, buildHeaders(ex), HttpStatusCode.valueOf(pdCause.getStatus()), request);
+    }
+
+    /**
+     * Parámetro que no se puede convertir al tipo declarado, como {@code ?enabled=abc} en un {@code Boolean} (CU-06; lo
+     * reusan los filtros de CU-05).
+     * <p>
+     * Cambio sobre lo que genera JHipster: Spring arma el cuerpo de este error antes de llegar a
+     * {@link #handleExceptionInternal}, que solo completa los cuerpos vacíos, así que el 400 salía sin {@code type},
+     * {@code message} ni {@code path}, a diferencia del resto de los errores (formato del contrato §13). Acá se arma un
+     * {@link ProblemDetailWithCause} y se completa como los demás.
+     * <p>
+     * El {@code detail} nombra el parámetro pero no repite el valor recibido (issue #27): lo que mandó el cliente no
+     * vuelve en la respuesta. Este camino es el de un {@code @RequestParam} suelto (CU-06); un objeto de parámetros con
+     * {@code @Valid} (CU-05) informa la falla de conversión como un {@code fieldError}.
+     */
+    @Override
+    protected ResponseEntity<Object> handleTypeMismatch(
+        TypeMismatchException ex,
+        HttpHeaders headers,
+        HttpStatusCode status,
+        WebRequest request
+    ) {
+        ProblemDetailWithCause problem = ProblemDetailWithCauseBuilder.instance()
+            .withStatus(status.value())
+            .withDetail("Failed to convert '" + ex.getPropertyName() + "'")
+            .build();
+        return handleExceptionInternal(ex, customizeProblem(problem, ex, (NativeWebRequest) request), headers, status, request);
     }
 
     @SuppressWarnings("java:S2638")
@@ -124,6 +177,10 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
             (problemProperties == null || !problemProperties.containsKey(FIELD_ERRORS_KEY))
         ) problem.setProperty(FIELD_ERRORS_KEY, getFieldErrors(fieldException));
 
+        if (
+            err instanceof MethodArgumentNotValidException && (problemProperties == null || !problemProperties.containsKey(CODE_KEY))
+        ) problem.setProperty(CODE_KEY, VALIDATION_ERROR_CODE);
+
         problem.setCause(buildCause(err.getCause(), request).orElse(null));
 
         return problem;
@@ -142,10 +199,16 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
                 new FieldErrorVM(
                     f.getObjectName().replaceFirst("DTO$", ""),
                     f.getField(),
-                    StringUtils.isNotBlank(f.getDefaultMessage()) ? f.getDefaultMessage() : f.getCode()
+                    fieldErrorMessage(f)
                 )
             )
             .toList();
+    }
+
+    /** Cambio sobre JHipster: una falla de conversión lleva un mensaje fijo, sin el valor recibido. */
+    private static String fieldErrorMessage(FieldError f) {
+        if (f.isBindingFailure()) return BINDING_FAILURE_MESSAGE;
+        return StringUtils.isNotBlank(f.getDefaultMessage()) ? f.getDefaultMessage() : f.getCode();
     }
 
     private String extractTitleForResponseStatus(Throwable err, int statusCode) {
@@ -200,6 +263,9 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
     }
 
     private String getCustomizedErrorDetails(Throwable err) {
+        if (err instanceof MethodArgumentNotValidException) return VALIDATION_DETAIL;
+        // El mensaje del firewall repite el valor rechazado: lo que mandó el cliente no vuelve en la respuesta.
+        if (err instanceof RequestRejectedException) return REQUEST_REJECTED_DETAIL;
         Collection<String> activeProfiles = List.of(env.getActiveProfiles());
         if (activeProfiles.contains(JHipsterConstants.SPRING_PROFILE_PRODUCTION)) {
             if (err instanceof HttpMessageConversionException) return "Unable to convert http message";
@@ -215,6 +281,9 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
         if (err instanceof ConcurrencyFailureException) return HttpStatus.CONFLICT;
         if (err instanceof BadCredentialsException) return HttpStatus.UNAUTHORIZED;
         if (err instanceof ConstraintViolationException) return HttpStatus.BAD_REQUEST;
+        // Cambio sobre JHipster (issue #35): el firewall de Spring Security rechaza un header o una ruta con caracteres
+        // no permitidos (por ejemplo \r\n en X-User-Login). Es un error del cliente, no un 500.
+        if (err instanceof RequestRejectedException) return HttpStatus.BAD_REQUEST;
         return null;
     }
 
