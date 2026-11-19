@@ -1,0 +1,10 @@
+# Lista blanca: todo afuera salvo lo que necesita el Dockerfile para compilar.
+# Así el .env (con los secretos), target/ y cualquier archivo nuevo nunca entran al contexto de la imagen.
+*
+!.mvn/
+!mvnw
+!pom.xml
+!checkstyle.xml
+!sonar-project.properties
+!src/
+!.git/

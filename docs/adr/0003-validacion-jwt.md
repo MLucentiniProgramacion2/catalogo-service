@@ -87,4 +87,5 @@ elegir cómo genera JHipster este servicio y cómo valida los tokens que emite t
     tiene la clave, no qué tipo de token es. Por eso el endpoint de agenda (CU-07) exige además
     `aud=catalogo-service`, `iss=turnos-service` y `ROLE_SERVICE`, y los endpoints de usuario
     rechazan el token técnico. Esas reglas de autorización se implementan con CU-07, no en esta
-    base.
+    base: ver el [ADR 0007](0007-autorizacion-token-de-servicio.md), que además exige `exp` en
+    todos los tokens.

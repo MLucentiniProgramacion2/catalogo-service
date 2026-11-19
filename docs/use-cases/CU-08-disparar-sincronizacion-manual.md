@@ -56,12 +56,106 @@ El administrador pide una sincronización manual.
 
 - **DP-05 (permisos de operación):** la sincronización manual requiere `ROLE_ADMIN`. Depende de que
   turnos incluya el rol en el JWT que emite. El estado de sincronización (CU-09), en cambio, lo
-  puede consultar cualquier usuario autenticado.
+  pueden consultar `ROLE_USER` y `ROLE_ADMIN`.
 - **DP-10 (modos de la sincronización manual):** por defecto es un disparador más de CU-03 (misma
   lógica e idempotencia). Con un parámetro explícito fuerza un snapshot (CU-02), útil para mostrar
   la reconstrucción en la demo. Los dos modos respetan la exclusión mutua (DP-09).
+- **Modo normal (issue #33):** corre CU-03 con el disparador `MANUAL`, dentro de la exclusión mutua:
+  incremental, snapshot o sin cambios, según lo que publique Redis. Es el modo por defecto: un `POST`
+  sin `mode` también lo usa. Hasta el #33 respondía `501`.
 - Ya estaba decidido que la sincronización es **automática** al recibir `CatalogUpdated`: la manual
   se suma, no la reemplaza.
+
+## Contrato del endpoint (issue #29)
+
+```http
+POST /api/admin/sync?mode={NORMAL|SNAPSHOT}
+Authorization: Bearer <jwt-de-usuario-con-ROLE_ADMIN>
+```
+
+| Parámetro | Tipo | Regla |
+| --- | --- | --- |
+| `mode` | `NORMAL` / `SNAPSHOT` | Opcional. Si se omite o va vacío, `NORMAL` (DP-10). Solo esos valores, en mayúsculas, como `day` en CU-05: `snapshot` da `400`. |
+
+El pedido no tiene cuerpo y es **sincrónico**: vuelve cuando la sincronización terminó, como pide el
+paso 4. Puede tardar minutos: en el peor caso, unos **22** (hasta 12 de espera de la exclusión y unos
+10 del peor caso de CU-03 con Redis, ver DP-09). Si el cliente corta la conexión, la sincronización
+sigue y el resultado queda en CU-09.
+
+Respuesta `200 OK`:
+
+```json
+{ "mode": "SNAPSHOT", "localVersionBefore": 3, "localVersionAfter": 5, "path": "SNAPSHOT", "attempts": 1 }
+```
+
+`localVersionBefore` es `null` si la base no tenía versión. `attempts` cuenta los intentos de toda la
+ejecución, con el primero incluido (DP-08): en modo normal suma los de la lectura de Redis, los de
+CU-04 y los de CU-02, si corrieron.
+
+`path` es `INCREMENTAL`, `SNAPSHOT` o `NONE`. `NONE` es "sin cambios": la copia ya estaba en la versión
+publicada en Redis (o en una posterior), y las dos versiones son iguales:
+
+```json
+{ "mode": "NORMAL", "localVersionBefore": 89, "localVersionAfter": 89, "path": "NONE", "attempts": 1 }
+```
+
+Va `NONE` y no `null` para que el cliente decida por un valor. Es un valor propio de la respuesta: el
+camino de la última sincronización exitosa de CU-09 sigue siendo `SNAPSHOT` o `INCREMENTAL`.
+
+| Caso | Status | Cuerpo |
+| --- | --- | --- |
+| Sin token, firma inválida o vencido (2a) | `401` | vacío (Spring Security) |
+| Sin `ROLE_ADMIN`, o token técnico de servicio (2b) | `403` | vacío (Spring Security) |
+| Modo desconocido o en minúsculas (2c) | `400` | `problem+json`, `message: error.http.400`, `detail: Failed to convert 'mode'`, sin `code`, como CU-06 |
+| Se superó la espera de la exclusión mutua (3a) | `409` | `problem+json`, `code: SYNC_IN_PROGRESS` |
+| La sincronización falló (3b) | `502` | `problem+json`, `code: SYNC_FAILED`, con `errorType`, versiones e intentos |
+
+Ejemplo de `502`:
+
+```json
+{
+  "type": "https://www.jhipster.tech/problem/problem-with-message",
+  "title": "Bad Gateway",
+  "status": 502,
+  "detail": "La cátedra no estuvo disponible después de 4 intentos: La cátedra no respondió al pedir el snapshot",
+  "message": "error.http.502",
+  "path": "/api/admin/sync",
+  "code": "SYNC_FAILED",
+  "errorType": "CATEDRA_UNAVAILABLE",
+  "localVersionBefore": 3,
+  "localVersionAfter": 3,
+  "attempts": 4
+}
+```
+
+- **`502` y no `200`:** el pedido era válido, pero lo pedido no ocurrió. Con un `200`, un cliente que
+  mira solo el status vería éxito. Es un solo status por `code`: si la que falló es la base local,
+  `errorType` es `DATABASE_UNAVAILABLE`, y si ni siquiera se pudo leer la versión, las dos versiones
+  van en `null` y `attempts` en `0`.
+- **`errorType`** toma los valores de `SyncErrorType`: `CATEDRA_UNAVAILABLE`, `INVALID_CREDENTIALS`,
+  `SNAPSHOT_FAILED`, `DATABASE_UNAVAILABLE`, `REDIS_UNAVAILABLE` (Redis no respondió en los 4 intentos)
+  o `INCREMENTAL_FAILED` (la base rechazó una versión incremental). Con `INVALID_CREDENTIALS`, la
+  descripción dice si la rechazó la API REST o Redis.
+- **En modo normal, `localVersionAfter` puede ser mayor que `localVersionBefore` aunque falle:** si CU-04
+  alcanzó a aplicar algunas versiones antes de la falla, se conservan (DP-08). Ejemplo con Redis caído
+  al leer la metadata, que no aplica nada:
+
+  ```json
+  {
+    "status": 502,
+    "detail": "Redis de la cátedra no respondió al leer la metadata después de 4 intentos: no se aplicó ningún cambio",
+    "code": "SYNC_FAILED",
+    "errorType": "REDIS_UNAVAILABLE",
+    "localVersionBefore": 88,
+    "localVersionAfter": 88,
+    "attempts": 4
+  }
+  ```
+- **`409`:** queda registrado como `LOCK_TIMEOUT` en CU-09. Se puede volver a pedir cuando termine la
+  que está corriendo; va sin `Retry-After` porque su duración no se conoce.
+
+Como en el contrato de la cátedra (§13), la app decide por `status` y `code`, nunca por `detail`. Las
+respuestas no llevan hosts, URL de la cátedra, tokens, stack traces ni nombres de clases.
 
 ## Respaldo en las consignas
 

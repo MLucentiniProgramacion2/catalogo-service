@@ -1,6 +1,7 @@
 package ar.edu.um.programacion2.catalogo.security.jwt;
 
 import static ar.edu.um.programacion2.catalogo.security.AuthoritiesConstants.USER;
+import static ar.edu.um.programacion2.catalogo.security.SecurityUtils.AUTHORITIES_CLAIM;
 import static ar.edu.um.programacion2.catalogo.security.jwt.JwtAuthenticationTestUtils.*;
 import static org.springframework.http.HttpHeaders.AUTHORIZATION;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -44,5 +45,15 @@ class JwtValidacionIT {
     @Test
     void sinTokenResponde401() throws Exception {
         mvc.perform(MockMvcRequestBuilders.get(ENDPOINT_PROTEGIDO)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void unTokenDeUsuarioSinExpResponde401() throws Exception {
+        // El validador por defecto lo dejaba pasar: un token sin exp no vence nunca (ADR 0007).
+        String token = createSignedToken(jwtKey, "usuario", claims -> claims.claim(AUTHORITIES_CLAIM, USER).claims(c -> c.remove("exp")));
+
+        mvc
+            .perform(MockMvcRequestBuilders.get(ENDPOINT_PROTEGIDO).header(AUTHORIZATION, BEARER + token))
+            .andExpect(status().isUnauthorized());
     }
 }

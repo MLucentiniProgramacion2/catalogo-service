@@ -38,9 +38,6 @@
         <checkstyle.version>14.1.0</checkstyle.version>
         <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
         <jhipster-framework.version>9.4.0</jhipster-framework.version>
-        <jib-maven-plugin.architecture>amd64</jib-maven-plugin.architecture>
-        <jib-maven-plugin.image>eclipse-temurin:25-jre-noble</jib-maven-plugin.image>
-        <jib-maven-plugin.version>3.5.2</jib-maven-plugin.version>
         <lifecycle-mapping.version>1.0.0</lifecycle-mapping.version>
         <liquibase-plugin.password/>
         <liquibase-plugin.url/>
@@ -115,6 +112,24 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jackson-test</artifactId>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
+        </dependency>
+        <!--
+            Redis de la cátedra (ADR 0006): Spring Data Redis y Lettuce sueltos, con las versiones del BOM de
+            Spring Boot, y sin spring-boot-starter-data-redis. La autoconfiguración de ese starter abre una
+            conexión a localhost:6379, activa repositorios de Redis y agrega un health indicator que usa INFO,
+            un comando que la ACL de la cátedra niega.
+        -->
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -286,6 +301,11 @@
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-kafka</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers-postgresql</artifactId>
             <scope>test</scope>
         </dependency>
@@ -352,10 +372,6 @@
             <plugin>
                 <groupId>com.diffplug.spotless</groupId>
                 <artifactId>spotless-maven-plugin</artifactId>
-            </plugin>
-            <plugin>
-                <groupId>com.google.cloud.tools</groupId>
-                <artifactId>jib-maven-plugin</artifactId>
             </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
@@ -603,62 +619,6 @@
                             </goals>
                         </execution>
                     </executions>
-                </plugin>
-                <plugin>
-                    <groupId>com.google.cloud.tools</groupId>
-                    <artifactId>jib-maven-plugin</artifactId>
-                    <version>${jib-maven-plugin.version}</version>
-                    <configuration>
-                        <from>
-                            <image>${jib-maven-plugin.image}</image>
-                            <platforms>
-                                <platform>
-                                    <architecture>${jib-maven-plugin.architecture}</architecture>
-                                    <os>linux</os>
-                                </platform>
-                            </platforms>
-                        </from>
-                        <to>
-                            <image>catalogoservice:latest</image>
-                        </to>
-                        <container>
-                            <entrypoint>
-                                <shell>bash</shell>
-                                <option>-c</option>
-                                <arg>/entrypoint.sh</arg>
-                            </entrypoint>
-                            <ports>
-                                <port>8081</port>
-                            </ports>
-                            <environment>
-                                <SPRING_OUTPUT_ANSI_ENABLED>ALWAYS</SPRING_OUTPUT_ANSI_ENABLED>
-                                <JHIPSTER_SLEEP>0</JHIPSTER_SLEEP>
-                            </environment>
-                            <creationTime>USE_CURRENT_TIMESTAMP</creationTime>
-                            <user>1000</user>
-                        </container>
-                        <extraDirectories>
-                            <paths>src/main/docker/jib</paths>
-                            <permissions>
-                                <permission>
-                                    <file>/entrypoint.sh</file>
-                                    <mode>755</mode>
-                                </permission>
-                            </permissions>
-                        </extraDirectories>
-                        <pluginExtensions>
-                            <pluginExtension>
-                                <implementation>com.google.cloud.tools.jib.maven.extension.springboot.JibSpringBootExtension</implementation>
-                            </pluginExtension>
-                        </pluginExtensions>
-                    </configuration>
-                    <dependencies>
-                        <dependency>
-                            <groupId>com.google.cloud.tools</groupId>
-                            <artifactId>jib-spring-boot-extension-maven</artifactId>
-                            <version>0.1.0</version>
-                        </dependency>
-                    </dependencies>
                 </plugin>
                 <plugin>
                     <groupId>io.github.git-commit-id</groupId>

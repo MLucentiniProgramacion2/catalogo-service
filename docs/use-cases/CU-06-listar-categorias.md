@@ -46,6 +46,48 @@ El usuario abre la pantalla de búsqueda o el selector de categoría.
   `503`. Ver CU-05.
 - **DP-06:** los endpoints de usuario rechazan el token técnico de servicio.
 
+## Contrato del endpoint (issue #25)
+
+```http
+GET /api/categories?enabled={true|false}
+Authorization: Bearer <jwt-de-usuario>
+```
+
+- `enabled` es opcional: sin él vienen todas, incluidas las deshabilitadas. Se aceptan los valores
+  que convierte Spring a `Boolean` (`true`, `false`, `on`, `off`, `yes`, `no`, `1`, `0`, sin
+  distinguir mayúsculas); vacío cuenta como ausente.
+- Orden por `id`: lo fija la cátedra y no depende de la collation de la base. Si hace falta, la app
+  ordena por nombre para mostrar.
+- Sin paginación: son pocas (8 en el catálogo de la cátedra) y el selector las necesita todas.
+
+Respuesta `200 OK`:
+
+```json
+{
+  "catalogVersion": 1,
+  "categories": [
+    { "id": 1, "name": "Clinica medica", "description": "Atencion clinica general", "enabled": true }
+  ]
+}
+```
+
+`description` puede ser `null`. `catalogVersion` es la versión de la que salen las categorías: las dos
+se leen en la misma transacción (`REPEATABLE READ`), así que un snapshot confirmado en el medio no las
+mezcla.
+
+| Caso | Status | Cuerpo |
+| --- | --- | --- |
+| Sin token, firma inválida o vencido (2a) | `401` | vacío, con `WWW-Authenticate` (Spring Security) |
+| Token de servicio o sin `ROLE_USER`/`ROLE_ADMIN` (2b) | `403` | vacío, con `WWW-Authenticate` (Spring Security) |
+| `enabled` no convertible (2c) | `400` | `problem+json`, `message: error.http.400` |
+| Sin versión aplicada (3a) | `503` | `problem+json`, `code: CATALOG_NOT_INITIALIZED` |
+
+Como en el contrato de la cátedra (§13), la app decide por `status` y `code`, nunca por `detail`.
+"Base vacía" es que nunca se confirmó un snapshot (`sync_status.local_version` nula), no que haya
+cero categorías: una versión aplicada sin categorías responde `200` con la lista vacía. Desde el
+issue #35, el `503` lleva `Retry-After` con el intervalo de la comprobación periódica en segundos
+(DP-04), que es la que vuelve a intentar el snapshot; con la periódica apagada no va.
+
 ## Respaldo en las consignas
 
 - Enunciado §4.1: filtro por categoría, resuelto con la copia local y usable desde KMP; el

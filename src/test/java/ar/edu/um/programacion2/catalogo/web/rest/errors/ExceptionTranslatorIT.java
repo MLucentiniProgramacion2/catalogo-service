@@ -1,5 +1,7 @@
 package ar.edu.um.programacion2.catalogo.web.rest.errors;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -43,7 +45,42 @@ class ExceptionTranslatorIT {
             .andExpect(jsonPath("$.message").value(ErrorConstants.ERR_VALIDATION))
             .andExpect(jsonPath("$.fieldErrors.[0].objectName").value("test"))
             .andExpect(jsonPath("$.fieldErrors.[0].field").value("test"))
-            .andExpect(jsonPath("$.fieldErrors.[0].message").value("must not be null"));
+            .andExpect(jsonPath("$.fieldErrors.[0].message").value("must not be null"))
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.detail").value("Invalid request parameters"))
+            .andExpect(content().string(not(containsString("java.lang"))));
+    }
+
+    @Test
+    void unObjetoDeParametrosConUnValorFueraDeRangoTieneCodeYNoRepiteElValor() throws Exception {
+        mockMvc
+            .perform(get("/api/exception-translator-test/model-attribute").param("page", "-7"))
+            .andExpect(status().isBadRequest())
+            .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.type").value(ErrorConstants.CONSTRAINT_VIOLATION_TYPE.toString()))
+            .andExpect(jsonPath("$.title").value("Method argument not valid"))
+            .andExpect(jsonPath("$.message").value(ErrorConstants.ERR_VALIDATION))
+            .andExpect(jsonPath("$.path").value("/api/exception-translator-test/model-attribute"))
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.detail").value("Invalid request parameters"))
+            .andExpect(jsonPath("$.fieldErrors.[0].objectName").value("testParams"))
+            .andExpect(jsonPath("$.fieldErrors.[0].field").value("page"))
+            .andExpect(jsonPath("$.fieldErrors.[0].message").value("must be greater than or equal to 0"))
+            .andExpect(content().string(not(containsString("-7"))))
+            .andExpect(content().string(not(containsString("java.lang"))));
+    }
+
+    @Test
+    void unObjetoDeParametrosConUnValorNoConvertibleUsaUnMensajeFijo() throws Exception {
+        mockMvc
+            .perform(get("/api/exception-translator-test/model-attribute").param("flag", "valorInventado"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.detail").value("Invalid request parameters"))
+            .andExpect(jsonPath("$.fieldErrors.[0].field").value("flag"))
+            .andExpect(jsonPath("$.fieldErrors.[0].message").value("Failed to convert value"))
+            .andExpect(content().string(not(containsString("valorInventado"))))
+            .andExpect(content().string(not(containsString("java.lang"))));
     }
 
     @Test
@@ -52,7 +89,8 @@ class ExceptionTranslatorIT {
             .perform(get("/api/exception-translator-test/missing-servlet-request-part"))
             .andExpect(status().isBadRequest())
             .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-            .andExpect(jsonPath("$.message").value("error.http.400"));
+            .andExpect(jsonPath("$.message").value("error.http.400"))
+            .andExpect(jsonPath("$.code").doesNotExist());
     }
 
     @Test
@@ -62,6 +100,23 @@ class ExceptionTranslatorIT {
             .andExpect(status().isBadRequest())
             .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
             .andExpect(jsonPath("$.message").value("error.http.400"));
+    }
+
+    @Test
+    void testTypeMismatchConElFormatoDeJHipster() throws Exception {
+        mockMvc
+            .perform(get("/api/exception-translator-test/type-mismatch").param("flag", "abc"))
+            .andExpect(status().isBadRequest())
+            .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.type").value(ErrorConstants.DEFAULT_TYPE.toString()))
+            .andExpect(jsonPath("$.title").value("Bad Request"))
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.message").value("error.http.400"))
+            .andExpect(jsonPath("$.path").value("/api/exception-translator-test/type-mismatch"))
+            .andExpect(jsonPath("$.detail").value("Failed to convert 'flag'"))
+            .andExpect(jsonPath("$.code").doesNotExist())
+            .andExpect(content().string(not(containsString("abc"))))
+            .andExpect(content().string(not(containsString("java.lang"))));
     }
 
     @Test
@@ -113,5 +168,17 @@ class ExceptionTranslatorIT {
             .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
             .andExpect(jsonPath("$.message").value("error.http.500"))
             .andExpect(jsonPath("$.title").value("Internal Server Error"));
+    }
+
+    @Test
+    void unHeaderQueRechazaElFirewallEsUn400QueNoRepiteElValor() throws Exception {
+        // El mensaje de RequestRejectedException trae el valor rechazado: antes salía en el detail de un 500.
+        mockMvc
+            .perform(get("/api/exception-translator-test/request-header").header("X-Prueba", "valor\r\nINFO linea falsa"))
+            .andExpect(status().isBadRequest())
+            .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.message").value("error.http.400"))
+            .andExpect(jsonPath("$.detail").value(ExceptionTranslator.REQUEST_REJECTED_DETAIL))
+            .andExpect(content().string(not(containsString("linea falsa"))));
     }
 }

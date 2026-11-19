@@ -14,13 +14,21 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
+import org.hibernate.annotations.DynamicUpdate;
 
 /**
  * Única fila de {@code sync_status} (changelog {@code sync/001-sync-status.xml}). La crea Liquibase con {@code id = 1}
  * y la base rechaza cualquier otra.
  * <p>
  * Los enums se guardan por nombre ({@code EnumType.STRING}): agregar un valor no cambia los ya guardados.
+ * <p>
+ * {@link DynamicUpdate}: el {@code UPDATE} lleva solo las columnas que cambiaron, no todas. Hace falta porque una
+ * escritura puede ocurrir sin tener la exclusión mutua: el {@code LOCK_TIMEOUT} de DP-09 se registra justamente mientras
+ * otra sincronización corre. Con el {@code UPDATE} completo, el que confirma último pisa al otro: el error volvía a dejar
+ * la versión anterior en una fila con los datos nuevos, o el snapshot borraba el error. Las condiciones están en
+ * {@code JpaSyncStatusRepositoryAdapter}; lo prueba {@code SyncStatusConcurrentWritesIT}.
  */
+@DynamicUpdate
 @Entity
 @Table(name = "sync_status")
 @Getter

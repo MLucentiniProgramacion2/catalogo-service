@@ -14,13 +14,21 @@ import ar.edu.um.programacion2.catalogo.archejemplo.domain.DominioQueUsaSecurity
 import ar.edu.um.programacion2.catalogo.archejemplo.domain.DominioQueUsaSpring;
 import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.FeatureQueUsaConfigDeJHipster;
 import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.FeatureQueUsaDomainDeJHipster;
+import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.FeatureQueUsaOtraFeature;
 import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.FeatureQueUsaWebDeJHipster;
+import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.messaging.MessagingQueUsaCatedra;
+import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.messaging.MessagingQueUsaPersistence;
+import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.periodic.PeriodicQueUsaRedis;
+import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.startup.StartupQueUsaPersistence;
+import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.web.WebQueUsaClient;
+import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.web.WebQueUsaPersistence;
+import ar.edu.um.programacion2.catalogo.archejemplo.infrastructure.web.WebQueUsaRedis;
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
-import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.core.importer.ImportOption.DoNotIncludeTests;
+import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
 import java.util.Arrays;
 import java.util.Collection;
@@ -70,6 +78,35 @@ class ArquitecturaDetectaViolacionesTest {
     void applicationNoDependeDeInfrastructureDetectaLaViolacion() {
         assertThat(clasesQueViolan(HexagonalArchitectureTest.applicationNoDependeDeInfrastructure, EJEMPLO)).containsExactly(
             nombres(ApplicationQueUsaInfrastructure.class)
+        );
+    }
+
+    @Test
+    void adaptadoresDeEntradaNoDependenDeAdaptadoresDeSalidaDetectaPersistenceRedisCatedraYClient() {
+        // El controller de ejemplo también está en infrastructure.web y no se marca: llama al service, no a persistence.
+        assertThat(
+            clasesQueViolan(HexagonalArchitectureTest.adaptadoresDeEntradaNoDependenDeAdaptadoresDeSalida, EJEMPLO)
+        ).containsExactlyInAnyOrder(
+            nombres(
+                WebQueUsaPersistence.class,
+                MessagingQueUsaPersistence.class,
+                WebQueUsaRedis.class,
+                MessagingQueUsaCatedra.class,
+                StartupQueUsaPersistence.class,
+                PeriodicQueUsaRedis.class,
+                WebQueUsaClient.class
+            )
+        );
+    }
+
+    @Test
+    void featureNoDependeDeDetectaLaDependenciaEntreFeatures() {
+        // La misma construcción que catalogNoDependeDeSync, aplicada a la feature de ejemplo: así no hace falta poner
+        // una clase de ejemplo dentro de catalog. Se importa sync además del ejemplo, para que exista el destino.
+        JavaClasses ejemploYSync = new ClassFileImporter().importPackages(PAQUETE_EJEMPLO, "ar.edu.um.programacion2.catalogo.sync");
+
+        assertThat(clasesQueViolan(HexagonalArchitectureTest.featureNoDependeDe("archejemplo", "sync"), ejemploYSync)).containsExactly(
+            nombres(FeatureQueUsaOtraFeature.class)
         );
     }
 

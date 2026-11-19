@@ -1,6 +1,7 @@
 package ar.edu.um.programacion2.catalogo.web.rest.errors;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.http.HttpStatus;
@@ -22,6 +23,9 @@ public class ExceptionTranslatorTestController {
         // empty method
     }
 
+    @GetMapping("/model-attribute")
+    public void modelAttribute(@Valid TestParams params) {}
+
     @GetMapping("/missing-servlet-request-part")
     public void missingServletRequestPartException(@RequestPart("part") String part) {
         // empty method
@@ -29,6 +33,11 @@ public class ExceptionTranslatorTestController {
 
     @GetMapping("/missing-servlet-request-parameter")
     public void missingServletRequestParameterException(@RequestParam("param") String param) {
+        // empty method
+    }
+
+    @GetMapping("/type-mismatch")
+    public void typeMismatch(@RequestParam("flag") Boolean flag) {
         // empty method
     }
 
@@ -47,10 +56,17 @@ public class ExceptionTranslatorTestController {
         throw new TestResponseStatusException();
     }
 
+    /** Lee un header: si trae caracteres de control, el firewall de Spring Security lo rechaza al leerlo. */
+    @GetMapping("/request-header")
+    public void requestHeader(@RequestHeader("X-Prueba") String value) {}
+
     @GetMapping("/internal-server-error")
     public void internalServerError() {
         throw new RuntimeException();
     }
+
+    /** Parámetros de la query como un objeto con {@code @Valid}, como en CU-05. */
+    public record TestParams(@Min(0) Integer page, Boolean flag) {}
 
     public static class TestDTO {
 

@@ -25,7 +25,8 @@ versión local + 1 hasta la versión objetivo.
 
 Para cada versión `v`, desde la versión local + 1 hasta la objetivo, en orden ascendente:
 
-1. Se lee `catedra:sync:changes:{v}` y se verifica que su campo `version` sea `v`.
+1. Se toma `catedra:sync:changes:{v}`, ya leído por CU-03 junto con los del resto del lote (un solo
+   `MGET`), y se verifica que su campo `version` sea `v`.
 2. Se obtienen las listas de IDs afectados: `professionalCategories`, `professionals` y
    `weeklySchedules`.
 3. Para cada ID se lee su estado vigente en el Hash correspondiente
@@ -53,17 +54,33 @@ porque al terminar el lote la copia converge al estado de la versión objetivo.
 
 ## Flujos alternativos
 
-- **1a. Falta `changes:{v}`** (salió de la ventana de retención mientras se aplicaba el lote):
-  discontinuidad. Se conservan las versiones ya aplicadas y se vuelve a CU-03, que ejecuta CU-02.
+- **1a. Falta `changes:{v}`:** ya no ocurre acá. CU-03 lee los `changes:{v}` de todo el lote de una
+  vez en el paso 8, y si falta alguno decide el snapshot **antes de aplicar nada** (issue #33). Como el
+  contenido de una versión no cambia, no hace falta volver a leerlo. Si el `version` de un
+  `changes:{v}` no es `v`, el estado no se puede verificar: igual que 3a.
 - **3a. Un ID listado en `changes:{v}` no existe en su Hash:** el estado no se puede verificar. Se
   conservan las versiones ya aplicadas y se vuelve a CU-03, que ejecuta CU-02.
 - **4a. Entidad inválida o con una referencia inexistente:** igual que 3a, el estado no se puede
-  verificar y se pasa a CU-02.
+  verificar y se pasa a CU-02. Un profesional cuya categoría no está ni en la copia local ni en esta
+  versión, o un horario cuyo profesional no está, terminan en snapshot: la base nunca es la que corta
+  por la FK. Se descartó traer la entidad referenciada del Hash: arreglaría en silencio una copia que
+  ya está inconsistente, con más código y más viajes, para un caso que hoy no pasa (la cátedra solo
+  cambia `enabled` del profesional 201). La verificación va adentro de la transacción de la versión,
+  después del paso 5: un `select id ... in (...)` por tipo, solo si hay referencias afuera de la
+  versión.
+- **Vence el plazo del lote** (`sync.incremental.time-budget`, 60 s, medido con el reloj de la
+  aplicación): no empieza otra versión ni otro reintento, se conservan las aplicadas, queda un WARN con
+  cuántas se aplicaron y desde cuál sigue el snapshot, y se vuelve a CU-03, que ejecuta CU-02.
 - **1b / 3b. Redis no disponible o timeout:** reintentos acotados (DP-08). Si se agotan, se
   conservan las versiones ya aplicadas completas y el caso termina con fallo.
-- **6a / 8a. Falla de la base:** rollback de la versión `v`, que no avanza. Reintentos acotados
-  (DP-08). Si se agotan, se conservan las versiones anteriores y el caso termina con fallo; el
-  `eventId` no queda registrado.
+- **6a / 8a. Falla de la base:** rollback de la versión `v`, que no avanza. Si la falla es
+  transitoria (está en `DatabaseFailures`), reintentos acotados (DP-08); si se agotan, se conservan las
+  versiones anteriores, el caso termina con `DATABASE_UNAVAILABLE` y el `eventId` no queda registrado.
+  Si no es transitoria (la base rechazó los datos o el uso), no se reintenta: `INCREMENTAL_FAILED`.
+- **8a. Commit dudoso:** si falla el commit de `v` pero la base sí lo confirmó, el reintento encuentra
+  la versión local en `v` y no en `v - 1`. Solo en un reintento después de una falla, eso cuenta como
+  aplicada y se sigue con la siguiente: reaplicar es idempotente. `TransactionSystemException` está en
+  `DatabaseFailures`, así que ese reintento ocurre.
 
 ## Postcondiciones
 
@@ -73,6 +90,20 @@ porque al terminar el lote la copia converge al estado de la versión objetivo.
   versión y nunca queda una versión aplicada a medias.
 
 ## Decisiones del proyecto
+
+- **Reintentos (issue #33):** un solo presupuesto de 3 reintentos (1, 2 y 4 s) para todo el lote, así
+  no se multiplican por versión. Un reintento repite solo el paso que falló: si falla la transacción,
+  no se vuelve a leer Redis.
+- **Viajes a Redis:** uno por cada Hash con IDs en cada versión (`HMGET`). Con el caso real (33
+  versiones, cada una con un solo profesional), 33 `HMGET`, más el `MGET` de los cambios y la metadata
+  que lee CU-03. Medido en el servidor con `INFO commandstats`.
+- **Sentencias de una versión real:** 5 (`SELECT` de `sync_status`, de la categoría y del profesional,
+  `UPDATE` del profesional y de `sync_status`), más el `INSERT` del `eventId` en la última. Reaplicada,
+  4: sin el `UPDATE` del profesional. Medido con las estadísticas de Hibernate. Las entidades se
+  guardan con `merge`: su `SELECT` es el que dice si hay que crearla o actualizarla.
+- **El peor caso** de CU-03 con este caso adentro está en DP-09 ([README](README.md)): el plazo del lote
+  es lo que le da una cota. Contando solo reintentos, cada versión puede tardar sus timeouts enteros
+  sin llegar a fallar, y el total crece con la cantidad de versiones.
 
 - **DP-07:** el `eventId` se registra en la transacción de la última versión del lote. Si falla
   algo antes, el rollback también lo deshace y el evento no queda marcado como procesado.

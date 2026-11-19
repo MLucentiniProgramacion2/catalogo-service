@@ -42,14 +42,16 @@ la disponibilidad de una fecha o antes de pedir un hold.
   usuario nunca sirve para este caso.
 - **4a. El profesional no existe en la copia local:** respuesta de "no encontrado" en
   `problem+json`.
-- **4b. El profesional está deshabilitado** (baja lógica): se informa que no está habilitado, para
-  que turnos no ofrezca ni valide turnos con él.
+- **4b. El profesional está deshabilitado** (baja lógica): se informa que no está habilitado
+  (`enabled: false`) y sin horarios, para que turnos no ofrezca ni valide turnos con él.
+- **4e. La categoría está deshabilitada y el profesional no:** se responde la agenda igual, con
+  `category.enabled: false`. El contrato no lo prohíbe y la cátedra solo rechaza un hold por
+  `PROFESSIONAL_DISABLED`; turnos decide qué hacer.
 - **4c. Base local vacía:** `503` (DP-03). Turnos no puede iniciar operaciones que requieran validar
   información vigente.
 - **4d. Sincronización en curso:** se responde con la última copia confirmada (DP-03).
 
-La forma concreta de la respuesta y de estos errores (rutas, DTOs y `code`) se define junto con el
-contrato con turnos, que todavía es una decisión pendiente.
+La forma concreta de la respuesta y de estos errores está en "Contrato del endpoint (issue #35)".
 
 ## Postcondiciones
 
@@ -77,6 +79,73 @@ contrato con turnos, que todavía es una decisión pendiente.
   informada quedó desactualizada, la cátedra rechaza el hold (`PROFESSIONAL_DISABLED`,
   `INVALID_SLOT`, `SLOT_ALREADY_RESERVED`, `SLOT_ALREADY_HELD`) y turnos lo traduce para el
   usuario: la copia local nunca autoriza una reserva por sí sola.
+
+## Contrato del endpoint (issue #35)
+
+```http
+GET /api/service/professionals/{id}/agenda
+Authorization: Bearer <jwt-tecnico-de-servicio>
+X-User-Login: ana.perez
+```
+
+`X-User-Login` es opcional. Respuesta `200 OK`:
+
+```json
+{
+  "catalogVersion": 57,
+  "professional": {
+    "id": 15,
+    "firstName": "Ana",
+    "lastName": "Gomez",
+    "enabled": true,
+    "category": { "id": 1, "name": "Clínica", "enabled": true }
+  },
+  "weeklySchedules": [
+    { "id": 23, "dayOfWeek": "MONDAY", "startTime": "08:00:00", "endTime": "09:00:00", "slotDurationMinutes": 15 },
+    { "id": 21, "dayOfWeek": "MONDAY", "startTime": "09:00:00", "endTime": "12:00:00", "slotDurationMinutes": 30 },
+    { "id": 24, "dayOfWeek": "FRIDAY", "startTime": "09:00:00", "endTime": "13:00:00", "slotDurationMinutes": 30 }
+  ]
+}
+```
+
+Con el profesional deshabilitado (4b):
+
+```json
+{ "catalogVersion": 57, "professional": { "id": 16, "firstName": "Luis", "lastName": "Perez", "enabled": false, "category": { "id": 1, "name": "Clínica", "enabled": true } }, "weeklySchedules": [] }
+```
+
+| Campo | Regla |
+| --- | --- |
+| `catalogVersion` | Versión local de la que salen el profesional y los horarios: los tres salen de la misma lectura (`REPEATABLE_READ`), así que nunca se mezclan dos versiones. |
+| `professional` | Habilitado o no, con su categoría. Nombre, apellido y categoría son los que turnos guarda solo para mostrar (DPT-12). |
+| `professional.category.enabled` | Se informa; no cambia la agenda (4e). |
+| `weeklySchedules` | Solo los habilitados, en orden: día de lunes a domingo, hora de inicio e ID. Vacío si el profesional está deshabilitado. |
+| `startTime`, `endTime` | Horas locales de atención, siempre `HH:mm:ss`, como las publica la cátedra (contrato §4, §7 y §14.4). |
+| `slotDurationMinutes` | Duración de cada turno, tal como la publica la cátedra. |
+
+Los DTO (`AgendaResponse`, `AgendaProfessionalResponse`, `AgendaCategoryResponse` y
+`AgendaScheduleResponse`) son propios de este contrato y no se comparten con los de la app (CU-05): un
+cambio para la app no toca a turnos. Un test fija el JSON exacto.
+
+| Caso | Status | Cuerpo |
+| --- | --- | --- |
+| Sin token, firma inválida, vencido o sin `exp` (2a) | `401` | vacío (Spring Security) |
+| Token de usuario, o de servicio sin `ROLE_SERVICE`, `aud`, `iss`, `iat`, con más de 5 min de vida o con un rol de usuario (2b) | `403` | vacío (Spring Security) |
+| El `id` no es un número | `400` | `problem+json` de JHipster; el `detail` no repite el valor |
+| El profesional no está en la copia (4a) | `404` | `problem+json`, `code: PROFESSIONAL_NOT_FOUND` |
+| Base local vacía (4c) | `503` | `problem+json`, `code: CATALOG_NOT_INITIALIZED`, y `Retry-After` con el intervalo de la comprobación periódica (sin el header si está apagada); el mismo `503` que CU-05 y CU-06 |
+
+Con una sincronización en curso (4d) se responde la última copia confirmada: la lectura no espera ni
+bloquea al snapshot. La regla de seguridad está en el [ADR 0007](../adr/0007-autorizacion-token-de-servicio.md).
+
+**Sentencias por pedido:** 3 (la versión, el profesional con su categoría y los horarios
+habilitados); 2 si el profesional no existe o está deshabilitado.
+
+**`X-User-Login`:** solo para el log, en INFO
+(`Agenda vigente del profesional 15 pedida por turnos (X-User-Login=ana.perez)`). Nunca autoriza,
+filtra ni vuelve en la respuesta. Se escribe solo si tiene de 3 a 50 caracteres (DPT-20) de los que admite
+el login de turnos; si no, `X-User-Login inválido`, sin repetirlo. Un valor con caracteres de control
+(`\r\n`) ni llega: el firewall de Spring Security rechaza el pedido con `400`.
 
 ## Respaldo en las consignas
 

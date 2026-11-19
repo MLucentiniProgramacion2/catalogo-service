@@ -13,6 +13,8 @@ import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalTime;
 import lombok.Getter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
@@ -22,6 +24,14 @@ import lombok.ToString;
  * <p>
  * {@code dayOfWeek} se guarda por nombre ({@code EnumType.STRING}), igual que en el contrato: con {@code ORDINAL} la base
  * guardaría 0 a 6 y dependería del orden del enum.
+ * <p>
+ * <strong>Las horas se guardan sin convertir de zona</strong> ({@code @JdbcTypeCode(SqlTypes.LOCAL_TIME)}): son horas
+ * locales de atención (contrato §4), y la base tiene que guardar exactamente las que publica la cátedra. Con la
+ * configuración de JHipster ({@code hibernate.jdbc.time_zone: UTC}), Hibernate convierte cada {@code LocalTime} de la
+ * zona de la JVM a UTC: con la JVM en -03, 18:00-21:00 quedaba guardado como 21:00-00:00, y un horario que cruzaba la
+ * medianoche al correrse cambiaba de sentido. Con {@code LOCAL_TIME}, Hibernate le pasa la hora al driver tal cual. La
+ * configuración global no se toca: los {@code Instant} se siguen guardando en UTC. Las consultas que comparan contra
+ * estas columnas mandan la hora sin convertir (ver {@code ProfessionalSpecifications.attendsOn}).
  */
 @Entity
 @Table(name = "weekly_schedule")
@@ -44,9 +54,11 @@ public class WeeklyScheduleEntity {
     @Column(name = "day_of_week", nullable = false, length = 9)
     private DayOfWeek dayOfWeek;
 
+    @JdbcTypeCode(SqlTypes.LOCAL_TIME)
     @Column(name = "start_time", nullable = false)
     private LocalTime startTime;
 
+    @JdbcTypeCode(SqlTypes.LOCAL_TIME)
     @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
