@@ -106,8 +106,9 @@ spring:
     import: optional:file:.env[.properties]
   docker:
     compose:
-      # La única base es la del docker-compose.yml de la raíz (docker compose up -d).
-      # Se desactiva para que la app no levante otra con src/main/docker/postgresql.yml.
+      # Imprescindible desde que el docker-compose.yml de la raíz también tiene la aplicación: spring-boot-docker-compose
+      # (en el classpath de dev, perfil Maven docker-compose) levantaría todo ese Compose al correr ./mvnw, y la
+      # aplicación del contenedor chocaría con la de ./mvnw. La base se levanta a mano (docker compose up -d <base>).
       enabled: false
   profiles:
     # The commented value for `active` can be replaced with valid Spring profiles to load.
