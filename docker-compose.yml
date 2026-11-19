@@ -1,9 +1,13 @@
-# Infraestructura local del servicio de catálogo y sincronización.
-# Las credenciales se leen de .env (ver .env.example); nunca se escriben acá.
-# Redis y Kafka son los de la cátedra: no se levantan localmente.
-
+# Servicio de catálogo y sincronización: su base y la aplicación (enunciado §3). Uno por servicio, sin Compose
+# conjunto. Las credenciales se leen de .env (ver .env.example); nunca se escriben acá.
+# Redis, Kafka y la API REST son los de la cátedra: no se levantan localmente (solo por ZeroTier).
+#
+#   docker compose up -d --build        base y aplicación (perfil prod)
+#   docker compose up -d catalogo-db    solo la base, para desarrollar con ./mvnw (perfil dev)
+#   docker compose stop                 apaga en orden; nunca "down -v": borra la copia del catálogo
+#
+# El nombre del proyecto no se cambia: los datos están en el volumen catalogo-service_catalogo-db-data.
 name: catalogo-service
-
 services:
   catalogo-db:
     image: postgres:18.1-alpine
@@ -26,6 +30,57 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  catalogo-app:
+    build: .
+    image: catalogo-service:local
+    container_name: catalogo-app
+    # Si falta una variable obligatoria la aplicación no arranca: tres intentos y queda detenida, con el motivo en
+    # el log (docker compose logs catalogo-app). Docker no la reinicia después de un docker compose stop.
+    restart: on-failure:3
+    # Las mismas variables que usa ./mvnw. "raw": los valores llegan literales, como los lee Spring
+    # (sin raw, Compose interpreta "$" y quita comillas).
+    env_file:
+      - path: .env
+        format: raw
+    # Pisan a las del .env, que son para ./mvnw desde el host.
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # La base, por la red del Compose: el nombre del servicio y el puerto del contenedor (no el del host).
+      CATALOGO_DB_HOST: catalogo-db
+      CATALOGO_DB_PORT: "5432"
+      # La misma zona que en desarrollo: los logs se leen igual que las evidencias anteriores.
+      # El código no depende de la zona de la JVM (WeeklyScheduleTimeZoneIT).
+      TZ: America/Argentina/Mendoza
+      # Heap máximo; sin esto la JVM toma el 25 % de la RAM del host.
+      JAVA_TOOL_OPTIONS: -Xmx512m
+    ports:
+      # 127.0.0.1 por defecto (el emulador de Android entra por 10.0.2.2). Para un teléfono físico, la IP de la
+      # red local en CATALOGO_APP_BIND. Nunca 0.0.0.0: también abriría el puerto en la red de ZeroTier, y choca
+      # con la publicación de abajo.
+      - "${CATALOGO_APP_BIND:-127.0.0.1}:8081:8081"
+      # Para el contenedor de turnos (http://host.docker.internal:8081): un contenedor no llega a un puerto
+      # publicado solo en 127.0.0.1. La IP del gateway de Docker (docker0) la ven el host y sus contenedores,
+      # no la red local.
+      - "${DOCKER_GATEWAY_IP:-172.17.0.1}:8081:8081"
+    depends_on:
+      catalogo-db:
+        condition: service_healthy
+    # Spring cierra por fases, hasta 30 s cada una (la comprobación periódica en curso, Kafka, los pedidos en vuelo).
+    # Docker manda SIGKILL recién después de esto; el valor por defecto (10 s) lo cortaría a mitad de camino.
+    stop_grace_period: 90s
+    healthcheck:
+      # La imagen no trae curl ni wget: el pedido va con bash. readiness incluye la base, no Redis, Kafka ni la cátedra.
+      test:
+        - CMD
+        - bash
+        - -c
+        - "exec 3<>/dev/tcp/127.0.0.1/8081 && printf 'GET /management/health/readiness HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s
 
 volumes:
   catalogo-db-data:

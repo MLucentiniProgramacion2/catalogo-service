@@ -15,8 +15,11 @@ Las funcionalidades de negocio se escriben a mano con arquitectura hexagonal.
 
 ## Requisitos
 
-- Java 25 (Temurin), por ejemplo con SDKMAN: `sdk install java 25.0.4-tem`
-- Docker con Docker Compose (para la base y para los tests con Testcontainers)
+- Docker con Docker Compose (probado con Engine 29.8 y Compose v5.5; el Compose usa `env_file` con
+  `format: raw`, que las versiones viejas no entienden)
+- Java 25 (Temurin) solo para desarrollar y correr los tests, por ejemplo con SDKMAN:
+  `sdk install java 25.0.4-tem`. Para levantar el servicio con Docker Compose no hace falta: la
+  imagen se compila adentro de Docker.
 
 No hace falta instalar Maven: se usa el wrapper `./mvnw`.
 
@@ -53,15 +56,45 @@ Completar el `.env` (ignorado por Git):
   - `SYNC_STARTUP_ENABLED` (`true`): al arrancar, armar o poner al día la copia local.
   - `SYNC_LOCK_WAIT_TIMEOUT` (`12m`), `SYNC_RETRY_DELAYS` (`1s,2s,4s`) y
     `SYNC_INCREMENTAL_TIME_BUDGET` (`60s`): si se cambian, hay que recalcular el peor caso.
+- Solo para Docker Compose (opcionales):
+  - `CATALOGO_APP_BIND` (`127.0.0.1`): interfaz del host donde se publica el `8081`. Para un teléfono
+    físico, la IP de la red local; nunca `0.0.0.0`.
+  - `DOCKER_GATEWAY_IP` (`172.17.0.1`): el `8081` se publica también en la IP del gateway de Docker,
+    para que el contenedor de turnos llegue por `host.docker.internal` (a un puerto publicado solo en
+    `127.0.0.1` un contenedor no llega).
 
 La cátedra solo es accesible por ZeroTier: si falla la conexión, verificar primero
 `sudo zerotier-cli listnetworks`.
 
 ## Uso
 
+### Con Docker Compose (base y aplicación)
+
 ```bash
-docker compose up -d   # levanta la base catalogo-db (PostgreSQL 18, puerto 5433 del host)
-./mvnw                 # corre la app en el perfil dev, en http://localhost:8081
+docker compose up -d --build --wait   # construye la imagen y levanta catalogo-db y catalogo-app (perfil prod)
+docker compose logs -f catalogo-app   # los logs de la aplicación (Ctrl+C no la detiene)
+docker compose stop                   # apaga en orden; el contenedor sale con 143 (SIGTERM)
+```
+
+- `--build` reconstruye la imagen ([`Dockerfile`](Dockerfile), en dos etapas: compila con el
+  wrapper y el perfil `prod` y corre en un JRE 25). Sin `--build`, el Compose usa la imagen que ya
+  está (`catalogo-service:local`). La primera vez tarda unos 2 minutos (baja las dependencias de
+  Maven); después, unos 20 segundos.
+- El contenedor usa el mismo `.env`. El [`docker-compose.yml`](docker-compose.yml) pisa la base
+  (`catalogo-db:5432`) y el perfil (`prod`).
+- `catalogo-app` queda `healthy` cuando responde `/management/health/readiness` (unos 20 s); la
+  sincronización de arranque sigue en segundo plano. La cátedra solo se alcanza por ZeroTier, también
+  desde el contenedor.
+- Levantarlo antes que turnos y apagarlo después.
+- `docker compose stop` espera hasta 90 s el cierre ordenado. **Nunca `docker compose down -v`**:
+  borra el volumen `catalogo-service_catalogo-db-data`, con la copia del catálogo.
+
+### Para desarrollar (base en Docker, aplicación con `./mvnw`)
+
+```bash
+docker compose stop catalogo-app    # si estaba corriendo: usa el mismo puerto 8081
+docker compose up -d catalogo-db    # solo la base (PostgreSQL 18, puerto 5433 del host)
+./mvnw                              # la app en el perfil dev, en http://localhost:8081
 ```
 
 Al arrancar, Liquibase aplica las migraciones y la sincronización arma o pone al día la copia local
@@ -117,8 +150,8 @@ imprime una línea con el tipo de error y el status/code, sin el token.
 
 ## Notas
 
-- `src/main/docker/` es lo que genera JHipster y todavía no se usa: la única base del servicio es la
-  del `docker-compose.yml` de la raíz.
+- El Compose del servicio es el `docker-compose.yml` de la raíz. Lo que queda en `src/main/docker/`
+  (monitoreo, Sonar, Zipkin, JHipster Control Center) es lo que generó JHipster y no se usa.
 - La clave JWT de `src/main/docker/jhipster-control-center.yml` (y de `.yo-rc.json` y del perfil de
   test) es la **clave de test, pública a propósito**: no sirve para validar tokens reales.
 - Decisiones de arquitectura en [`docs/adr/`](docs/adr) y casos de uso en
